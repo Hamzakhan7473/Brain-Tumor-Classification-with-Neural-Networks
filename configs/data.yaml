@@ -1,0 +1,48 @@
+# Data configuration — paths, splits, augmentation
+# Used by src/data/dataset.py and training scripts
+
+dataset:
+  name: brain_tumor_mri
+  # Relative to project root or DATA_DIR env
+  raw_dir: data/raw
+  processed_dir: data/processed
+
+splits:
+  train_ratio: 0.75
+  val_ratio: 0.15
+  test_ratio: 0.10
+  seed: 42
+  stratify: true
+
+# Expected folder structure under raw_dir: class_name/sample.png
+classes:  # adjust to your dataset
+  - glioma
+  - meningioma
+  - no_tumor
+  - pituitary
+
+image:
+  target_size: [224, 224]  # height, width
+  channels: 3
+  dtype: float32
+  normalize: true
+  # ImageNet stats if using pre-trained models
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+
+augmentation:
+  train:
+    horizontal_flip: true
+    vertical_flip: false
+    rotation_range: 15
+    width_shift: 0.1
+    height_shift: 0.1
+    zoom_range: 0.1
+    brightness_range: [0.9, 1.1]
+    fill_mode: reflect
+  val_test:
+    # No augmentation for validation/test
+    resize_only: true
+
+batch_size: 32
+num_workers: 4

@@ -1,0 +1,38 @@
+# Brain Tumor CNN — Research Project Dependencies
+# Python 3.9+ recommended
+
+# Core ML / Deep Learning
+tensorflow>=2.12.0
+keras>=2.12.0
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Data & preprocessing
+numpy>=1.24.0
+pandas>=2.0.0
+Pillow>=9.5.0
+opencv-python-headless>=4.7.0
+scikit-learn>=1.2.0
+
+# Configuration
+pyyaml>=6.0
+
+# Streamlit & UI
+streamlit>=1.28.0
+
+# Multimodal LLM (Gemini, etc.)
+google-generativeai>=0.3.0
+# Optional: openai, anthropic for other LLM backends
+
+# Visualization & interpretability
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Utilities
+tqdm>=4.65.0
+python-dotenv>=1.0.0
+kaggle>=1.5.0
+
+# Optional: experiment tracking
+# mlflow>=2.0.0
+# wandb>=0.15.0

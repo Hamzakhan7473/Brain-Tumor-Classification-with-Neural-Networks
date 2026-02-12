@@ -1,0 +1,27 @@
+# Second transfer-learning model — Challenge 2: ≥99% accuracy
+# Example: EfficientNetB0, ResNet50, or DenseNet121
+
+model:
+  name: efficientnet_b0  # or resnet50, densenet121
+  base: EfficientNetB0
+  input_shape: [224, 224, 3]
+  num_classes: 4
+  trainable_layers: 20
+  dropout: 0.4
+  pooling: avg
+
+training:
+  epochs: 50
+  batch_size: 24
+  optimizer: adamw
+  learning_rate: 0.00005
+  weight_decay: 0.01
+  lr_factor: 0.5
+  lr_patience: 5
+  early_stopping_patience: 10
+  early_stopping_monitor: val_accuracy
+
+paths:
+  checkpoint_dir: models/checkpoints/transfer
+  save_best: models/saved/transfer_best.keras
+  save_final: models/saved/transfer_final.keras

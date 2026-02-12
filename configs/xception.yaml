@@ -1,0 +1,25 @@
+# Xception transfer learning configuration
+
+model:
+  name: xception
+  base: xception  # keras.applications
+  input_shape: [299, 299, 3]  # Xception default
+  num_classes: 4
+  trainable_layers: 30  # unfreeze last N layers; 0 = all frozen except head
+  dropout: 0.5
+  pooling: avg
+
+training:
+  epochs: 40
+  batch_size: 24
+  optimizer: adam
+  learning_rate: 0.0001
+  lr_factor: 0.5
+  lr_patience: 4
+  early_stopping_patience: 8
+  early_stopping_monitor: val_accuracy
+
+paths:
+  checkpoint_dir: models/checkpoints/xception
+  save_best: models/saved/xception_best.keras
+  save_final: models/saved/xception_final.keras

@@ -1,0 +1,61 @@
+# Brain Tumor CNN — Git ignore
+
+# Environment
+venv/
+.venv/
+env/
+.env
+*.env
+!.env.example
+
+# Data (large files)
+data/raw/
+data/processed/*.npy
+data/processed/*.pkl
+*.zip
+
+# Models and checkpoints
+models/checkpoints/
+models/saved/*.h5
+models/saved/*.keras
+models/saved/*.pt
+models/saved/*.pth
+*.weights
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+eggs/
+*.egg-info/
+*.egg
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs and experiments
+logs/
+*.log
+mlruns/
+wandb/
+
+# Temporary
+tmp/
+temp/
+*.tmp

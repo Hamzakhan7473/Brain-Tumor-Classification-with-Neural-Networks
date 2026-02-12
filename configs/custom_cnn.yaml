@@ -1,0 +1,28 @@
+# Custom CNN training configuration
+# Target: Challenge 1 — ≥98% accuracy
+
+model:
+  name: custom_cnn
+  input_shape: [224, 224, 3]
+  num_classes: 4
+  # Architecture defined in models/custom_cnn.py
+  filters: [32, 64, 128, 256]
+  dense_units: [256, 128]
+  dropout: 0.5
+
+training:
+  epochs: 80
+  batch_size: 32
+  optimizer: adam
+  learning_rate: 0.001
+  # ReduceLROnPlateau
+  lr_factor: 0.5
+  lr_patience: 5
+  # EarlyStopping
+  early_stopping_patience: 12
+  early_stopping_monitor: val_accuracy
+
+paths:
+  checkpoint_dir: models/checkpoints/custom_cnn
+  save_best: models/saved/custom_cnn_best.keras
+  save_final: models/saved/custom_cnn_final.keras

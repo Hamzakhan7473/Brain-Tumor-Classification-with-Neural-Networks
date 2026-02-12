@@ -1,0 +1,31 @@
+# Streamlit app and LLM configuration
+
+app:
+  title: Brain Tumor MRI — Classification & Explainability
+  page_icon: "🧠"
+  layout: wide
+
+llm:
+  default_provider: gemini
+  default_model: gemini-1.5-flash
+  # Challenge 3: list of selectable models
+  providers:
+    - id: gemini
+      name: Google Gemini 1.5 Flash
+      model_id: gemini-1.5-flash
+    # - id: openai
+    #   name: OpenAI GPT-4 Vision
+    #   model_id: gpt-4-vision-preview
+  max_tokens: 1024
+  temperature: 0.3
+
+report:
+  include_prediction: true
+  include_insights: true
+  include_historical_cases: true
+  include_next_steps: true
+
+models_for_inference:
+  - custom_cnn
+  - xception
+  - transfer
