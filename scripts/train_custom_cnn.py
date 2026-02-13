@@ -19,6 +19,12 @@ def main():
     with open(args.config) as f:
         config = yaml.safe_load(f)
 
+    # Resolve save paths relative to project root
+    paths = config.setdefault("paths", {})
+    for key in ("save_best", "save_final", "checkpoint_dir"):
+        if paths.get(key) and not Path(paths[key]).is_absolute():
+            paths[key] = str(ROOT / paths[key])
+
     # Load data config
     data_path = ROOT / "configs" / "data.yaml"
     with open(data_path) as f:

@@ -54,6 +54,7 @@ def run_training(model, train_ds, val_ds, config: dict):
         callbacks=callbacks,
     )
     if paths.get("save_final"):
+        Path(paths["save_final"]).parent.mkdir(parents=True, exist_ok=True)
         model.save(paths["save_final"])
     return history
 
