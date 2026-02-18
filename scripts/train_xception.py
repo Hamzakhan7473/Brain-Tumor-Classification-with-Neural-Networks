@@ -26,6 +26,8 @@ def main():
     data_path = ROOT / "configs" / "data.yaml"
     with open(data_path) as f:
         data_config = yaml.safe_load(f)
+    # Ensure data loader matches Xception input size (299x299)
+    data_config.setdefault("image", {})["target_size"] = [299, 299]
 
     from src.data.dataset import get_dataset
     from src.training.train import run_training

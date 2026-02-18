@@ -6,13 +6,25 @@ app:
   layout: wide
 
 llm:
-  default_provider: gemini
-  default_model: gemini-1.5-flash
-  # Challenge 3: list of selectable models
+  default_provider: gemini_2_flash
+  default_model: gemini-2.0-flash
+  # Challenge 3: selectable models (newest Gemini first)
   providers:
-    - id: gemini
-      name: Google Gemini 1.5 Flash
+    - id: gemini_2_flash
+      name: Gemini 2.0 Flash (newest, default)
+      model_id: gemini-2.0-flash
+    - id: gemini_2_pro
+      name: Gemini 2.0 Pro (experimental)
+      model_id: gemini-2.0-pro-exp-02-05
+    - id: gemini_2_flash_lite
+      name: Gemini 2.0 Flash Lite (cost-optimized)
+      model_id: gemini-2.0-flash-lite
+    - id: gemini_15_flash
+      name: Gemini 1.5 Flash
       model_id: gemini-1.5-flash
+    - id: gemini_15_pro
+      name: Gemini 1.5 Pro
+      model_id: gemini-1.5-pro
     # - id: openai
     #   name: OpenAI GPT-4 Vision
     #   model_id: gpt-4-vision-preview

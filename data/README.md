@@ -4,35 +4,58 @@
 
 Use a **Brain MRI tumor classification** dataset from Kaggle, for example:
 
+- [Brain Tumor MRI Dataset](https://www.kaggle.com/datasets/masoudnickparvar/brain-tumor-mri-dataset) — used by `scripts/download_data_kagglehub.py`
 - [Brain Tumor Classification (MRI)](https://www.kaggle.com/datasets/sartajbhuvaji/brain-tumor-classification-mri)
-- Or: [Brain Tumor MRI (Multi-Class)](https://www.kaggle.com/datasets/maxwellbernard/brain-tumor-mri-multi-class-dataset)
+- [Brain Tumor MRI (Multi-Class)](https://www.kaggle.com/datasets/maxwellbernard/brain-tumor-mri-multi-class-dataset)
 
 ## Expected structure
 
-Place the downloaded data under `raw/` so that images are organized by class:
+After running `download_data_kagglehub.py`, data is under `raw/` with one folder per class:
 
 ```
 data/
   raw/
     glioma/
-      img1.jpg
-      img2.jpg
+      img1.jpg ...
     meningioma/
       ...
-    no_tumor/
-      ...
     pituitary/
+      ...
+    notumor/
       ...
   processed/   # optional: precomputed splits, cached arrays
 ```
 
-Class names and paths can be overridden in `configs/data.yaml`.
+Class names in `configs/data.yaml` must match these folder names (`glioma`, `meningioma`, `pituitary`, `notumor`).
 
-## Download (Kaggle CLI)
+## Download
+
+### Option 1: kagglehub (recommended)
+
+No API key in env needed; uses Kaggle credentials from `~/.kaggle/kaggle.json` or prompts login:
+
+```bash
+pip install kagglehub
+python scripts/download_data_kagglehub.py
+```
+
+Downloads **masoudnickparvar/brain-tumor-mri-dataset** and places it under `data/raw/`.
+
+### Option 2: Kaggle CLI
 
 1. Install Kaggle CLI: `pip install kaggle`
 2. Place `kaggle.json` (with your API credentials) in `~/.kaggle/`
 3. Run: `bash scripts/download_data.sh` (or use the dataset-specific command from the dataset page)
+
+## Verify backend and data
+
+From project root:
+
+```bash
+python scripts/check_backend_and_data.py
+```
+
+This checks config, `data/raw` layout, class counts, and (if TensorFlow is installed) one batch from the data pipeline.
 
 ## License
 

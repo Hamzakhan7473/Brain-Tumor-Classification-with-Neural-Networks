@@ -1,10 +1,11 @@
 """
 Comprehensive report: model prediction, insights, historical cases, next steps (Challenge 5).
 """
+from typing import Optional
 from .client import get_llm_client, generate_with_image
 
 
-def build_report(image_path_or_bytes, prediction: str, confidence: float, provider: str = "gemini"):
+def build_report(image_path_or_bytes, prediction: str, confidence: float, provider: str = "gemini", model_id: Optional[str] = None):
     """Generate a structured report with prediction, insights, analogous cases, and next steps."""
     prompt = (
         "You are a medical imaging report assistant. Given this brain MRI scan and the following "
@@ -16,5 +17,5 @@ def build_report(image_path_or_bytes, prediction: str, confidence: float, provid
         "Use clear headings and plain language. Do not make a definitive diagnosis.\n\n"
         f"Model prediction: {prediction} (confidence: {confidence:.2%})."
     )
-    client = get_llm_client(provider=provider)
+    client = get_llm_client(provider=provider, model_id=model_id)
     return generate_with_image(client, image_path_or_bytes, prompt)

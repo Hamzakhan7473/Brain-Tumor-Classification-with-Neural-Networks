@@ -1,0 +1,15 @@
+# Ondex-inspired HealthTech theme
+# Ref: https://www.framer.com/marketplace/templates/ondex/
+
+[theme]
+primaryColor = "#0d9488"
+backgroundColor = "#fafbfc"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#1e293b"
+font = "sans serif"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

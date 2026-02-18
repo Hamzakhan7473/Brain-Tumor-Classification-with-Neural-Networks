@@ -195,6 +195,33 @@ brain_tumor_Cnn/
    python scripts/train_transfer.py --config configs/transfer.yaml
    ```
 
+### Troubleshooting
+
+- **`ImportError: cannot import name 'runtime_version' from 'google.protobuf'`** — TensorFlow does **not** work with protobuf 4.x. Use protobuf 5.x or 3.20.x and reinstall TensorFlow:
+  ```bash
+  python scripts/fix_tensorflow_protobuf.py
+  ```
+  Or manually:
+  ```bash
+  pip install --upgrade 'protobuf>=5.0,<6'
+  pip install --upgrade --force-reinstall tensorflow
+  ```
+  If that fails, try protobuf 3.20.x: `pip install 'protobuf>=3.20,<4'` then reinstall TensorFlow. Using a fresh virtual environment and `pip install -r requirements.txt` also often resolves it.
+
+- **`numpy.dtype size changed, may indicate binary incompatibility`** — Usually **pandas** (used by Keras) was built against a different numpy. Reinstall numpy and pandas so ABIs match:
+  ```bash
+  pip install --upgrade --force-reinstall numpy pandas
+  python -c "from tensorflow import keras; print('OK')"
+  ```
+  If it still fails, reinstall TensorFlow as well: `pip install --upgrade --force-reinstall tensorflow`.
+
+- **`Cannot uninstall rich` / `no RECORD file`** — The `rich` package is broken (no RECORD file; often from conda). Run the fix script; it removes the broken install and installs `rich` with `--ignore-installed` so pip does not try to uninstall the broken entry:
+  ```bash
+  python scripts/fix_rich_manual.py
+  python -c "from tensorflow import keras; print('OK')"
+  ```
+  If training still fails with `ModuleNotFoundError: No module named 'rich'`, run: `python -m pip install --ignore-installed rich` then retry. If the script can't delete the folder (permissions), delete the `rich` folder under site-packages (e.g. `rm -rf .../site-packages/rich` and any `rich-*.dist-info`), then run `python -m pip install --ignore-installed rich`.
+
 ---
 
 ## Usage

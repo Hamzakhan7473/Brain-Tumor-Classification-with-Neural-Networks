@@ -1,9 +1,10 @@
 # Brain Tumor CNN — Research Project Dependencies
 # Python 3.9+ recommended
 
-# Core ML / Deep Learning
+# Core ML / Deep Learning (protobuf 4.x is incompatible with TensorFlow; use 3.20.x or 5.x)
 tensorflow>=2.12.0
 keras>=2.12.0
+protobuf>=5.0,<6
 torch>=2.0.0
 torchvision>=0.15.0
 
@@ -32,6 +33,7 @@ seaborn>=0.12.0
 tqdm>=4.65.0
 python-dotenv>=1.0.0
 kaggle>=1.5.0
+kagglehub>=0.2.0
 
 # Optional: experiment tracking
 # mlflow>=2.0.0

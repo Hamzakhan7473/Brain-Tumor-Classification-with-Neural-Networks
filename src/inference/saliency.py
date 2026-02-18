@@ -2,9 +2,9 @@
 Saliency map implementation for CNN interpretability.
 Highlights image regions that most influence the model's prediction.
 Ref: Simonyan et al., Deep inside convolutional networks: Visualising image classification models and saliency maps.
+TensorFlow is imported lazily to avoid protobuf errors at app startup.
 """
 import numpy as np
-import tensorflow as tf
 
 
 def generate_saliency_map(model, image_batch, class_idx=None):
@@ -13,6 +13,7 @@ def generate_saliency_map(model, image_batch, class_idx=None):
     image_batch: (1, H, W, C), must be tf.Variable for gradient tape.
     Returns: (H, W) saliency map (absolute gradients, normalized).
     """
+    import tensorflow as tf
     img = tf.Variable(image_batch, dtype=tf.float32)
     with tf.GradientTape() as tape:
         tape.watch(img)

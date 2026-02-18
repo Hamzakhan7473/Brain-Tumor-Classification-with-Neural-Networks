@@ -1,10 +1,10 @@
 """
 Dataset loading and batching for brain MRI classification.
+TensorFlow/Keras imported only inside functions that need them (avoids protobuf errors at app startup).
 """
 from pathlib import Path
 
 import numpy as np
-from tensorflow import keras
 
 
 def _project_root():
@@ -26,6 +26,8 @@ def get_dataset(config: dict, split: str):
     Expects raw_dir to contain class subfolders (e.g. glioma/, meningioma/, ...).
     Uses validation_split for train/validation; for 'test' returns validation subset.
     """
+    from tensorflow import keras
+
     raw_dir = _resolve_raw_dir(config)
     if not raw_dir.exists():
         raise FileNotFoundError(f"Data directory not found: {raw_dir}. Download the dataset first (see data/README.md).")
@@ -73,10 +75,10 @@ def get_dataset(config: dict, split: str):
 
 def load_image_for_inference(image_path: str, target_size=(224, 224), normalize: bool = True):
     """Load and preprocess a single image from file path for inference."""
-    from tensorflow.keras.preprocessing import image
+    from PIL import Image
 
-    img = image.load_img(image_path, target_size=target_size)
-    arr = image.img_to_array(img)
+    img = Image.open(image_path).convert("RGB").resize(target_size)
+    arr = np.asarray(img, dtype=np.float32)
     arr = np.expand_dims(arr, axis=0)
     if normalize:
         arr = arr / 255.0
@@ -85,11 +87,11 @@ def load_image_for_inference(image_path: str, target_size=(224, 224), normalize:
 
 def load_image_from_bytes(image_bytes: bytes, target_size=(224, 224), normalize: bool = True):
     """Load and preprocess an image from bytes (e.g. Streamlit upload) for inference."""
-    from tensorflow.keras.preprocessing import image
     import io
+    from PIL import Image
 
-    img = image.load_img(io.BytesIO(image_bytes), target_size=target_size)
-    arr = image.img_to_array(img)
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB").resize(target_size)
+    arr = np.asarray(img, dtype=np.float32)
     arr = np.expand_dims(arr, axis=0)
     if normalize:
         arr = arr / 255.0

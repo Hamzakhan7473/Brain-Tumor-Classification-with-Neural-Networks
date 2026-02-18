@@ -1,12 +1,12 @@
 """
 Load saved models and run prediction on single or batch images.
 Supports different input sizes per model (224 for custom_cnn/transfer, 299 for Xception).
+TensorFlow is imported lazily to avoid protobuf version errors at app startup.
 """
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
 import numpy as np
-from tensorflow import keras
 
 
 def _project_root() -> Path:
@@ -42,6 +42,7 @@ def load_model(model_name: str, project_root: Optional[Path] = None):
     path = get_model_path(model_name, project_root)
     if path is None:
         return None
+    from tensorflow import keras
     return keras.models.load_model(str(path))
 
 

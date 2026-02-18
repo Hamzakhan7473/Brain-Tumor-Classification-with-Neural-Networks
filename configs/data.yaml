@@ -15,11 +15,13 @@ splits:
   stratify: true
 
 # Expected folder structure under raw_dir: class_name/sample.png
-classes:  # adjust to your dataset
+# masoudnickparvar/brain-tumor-mri-dataset (via kagglehub) uses:
+# Training/{glioma, meningioma, pituitary, notumor} and Testing/{...}
+classes:
   - glioma
   - meningioma
-  - no_tumor
   - pituitary
+  - notumor
 
 image:
   target_size: [224, 224]  # height, width
