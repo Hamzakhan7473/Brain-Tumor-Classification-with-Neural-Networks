@@ -166,6 +166,102 @@ def inject_apple_css():
             color: {TEXT_MUTED};
             margin-top: 0.5rem;
         }}
+
+        /* ——— HealthTech dashboard: report view ——— */
+        .report-topbar {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 0 1.25rem;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid rgba(0,0,0,0.08);
+            flex-wrap: wrap;
+            gap: 0.75rem;
+        }}
+        .report-topbar-left {{ display: flex; align-items: center; gap: 1rem; }}
+        .report-topbar-right {{ display: flex; align-items: center; gap: 0.75rem; }}
+        .report-title {{ font-size: 1.35rem; font-weight: 600; color: {TEXT}; margin: 0; }}
+        .report-search {{
+            min-width: 220px;
+            padding: 0.5rem 0.85rem;
+            border-radius: 10px;
+            border: 1px solid rgba(0,0,0,0.1);
+            font-size: 0.9rem;
+            color: {TEXT_MUTED};
+            background: #f8fafc;
+        }}
+        .report-patient-card {{
+            background: {CARD_BG};
+            border-radius: 12px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1rem;
+            border: 1px solid rgba(0,0,0,0.06);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }}
+        .report-patient-card .patient-name {{ font-weight: 600; color: {TEXT}; font-size: 1.05rem; }}
+        .report-patient-card .patient-meta {{ font-size: 0.85rem; color: {TEXT_MUTED}; margin-top: 0.25rem; }}
+
+        .findings-card {{
+            background: {CARD_BG};
+            border-radius: 12px;
+            padding: 1.25rem 1.5rem;
+            margin: 1rem 0;
+            border: 1px solid rgba(0,0,0,0.06);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }}
+        .findings-card h4 {{ margin: 0 0 0.75rem 0; font-size: 1rem; font-weight: 600; color: {TEXT}; }}
+        .finding-row {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.6rem 0;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            font-size: 0.9rem;
+        }}
+        .finding-row:last-child {{ border-bottom: none; }}
+        .finding-label {{ color: {TEXT}; font-weight: 500; }}
+        .finding-value {{ color: {TEXT}; }}
+        .status-pill {{
+            display: inline-block;
+            padding: 0.25rem 0.65rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }}
+        .status-normal {{ background: #dcfce7; color: #166534; }}
+        .status-follow {{ background: #fef3c7; color: #92400e; }}
+        .status-refer {{ background: #fee2e2; color: #991b1b; }}
+        .status-review {{ background: #e0e7ff; color: #3730a3; }}
+
+        .recommendations-card {{
+            background: linear-gradient(135deg, #f0fdfa 0%, #f8fafc 100%);
+            border-radius: 12px;
+            padding: 1.25rem 1.5rem;
+            margin: 1rem 0;
+            border: 1px solid rgba(13, 148, 136, 0.2);
+        }}
+        .recommendations-card h4 {{ margin: 0 0 0.75rem 0; font-size: 1rem; font-weight: 600; color: {TEXT}; }}
+        .recommendation-item {{
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 0;
+            font-size: 0.9rem;
+            color: {TEXT};
+        }}
+        .recommendation-item::before {{ content: "↑"; color: {ACCENT}; font-weight: 700; }}
+
+        .similar-cases-card {{
+            background: {CARD_BG};
+            border-radius: 12px;
+            padding: 1.25rem 1.5rem;
+            margin: 1rem 0;
+            border: 1px solid rgba(0,0,0,0.06);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }}
+        .similar-cases-card h4 {{ margin: 0 0 0.75rem 0; font-size: 1rem; font-weight: 600; color: {TEXT}; }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -202,3 +298,60 @@ def apple_card_markdown(html_content: str):
         f'<div class="apple-card">{html_content}</div>',
         unsafe_allow_html=True,
     )
+
+
+# ——— HealthTech dashboard components (doctor report view) ———
+
+def report_topbar(title: str = "MRI Report", show_search: bool = True):
+    """Top bar: title, search placeholder, Export/Recent area (buttons rendered by caller)."""
+    search_html = (
+        '<input type="text" class="report-search" placeholder="Search reports, tumor types…" readonly />'
+        if show_search else ""
+    )
+    st.markdown(
+        f'<div class="report-topbar">'
+        f'<div class="report-topbar-left"><h2 class="report-title">{title}</h2>{search_html}</div>'
+        f'<div class="report-topbar-right" id="report-topbar-actions"></div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def report_patient_card(patient_name: str = "Current scan", meta: str = "Uploaded now"):
+    """Patient/scan context card (e.g. 'John Smith - age: 45' or 'Scan - Feb 2026')."""
+    st.markdown(
+        f'<div class="report-patient-card">'
+        f'<div class="patient-name">{patient_name}</div>'
+        f'<div class="patient-meta">{meta}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def findings_row_html(label: str, value: str, status: str) -> str:
+    """One finding row: label, value, status pill (normal/follow/refer/review)."""
+    status_class = f"status-{status}" if status in ("normal", "follow", "refer", "review") else "status-review"
+    return (
+        f'<div class="finding-row">'
+        f'<span class="finding-label">{label}</span>'
+        f'<span class="finding-value">{value}</span>'
+        f'<span class="status-pill {status_class}">{status.upper()}</span>'
+        f'</div>'
+    )
+
+
+def findings_card_html(title: str, rows: list[tuple[str, str, str]]) -> str:
+    """Full findings card HTML. rows = [(label, value, status), ...]."""
+    body = "".join(findings_row_html(l, v, s) for l, v, s in rows)
+    return f'<div class="findings-card"><h4>{title}</h4><div>{body}</div></div>'
+
+
+def recommendations_card_html(title: str, items: list[str]) -> str:
+    """Recommended next steps card. items = list of short strings."""
+    body = "".join(f'<div class="recommendation-item">{item}</div>' for item in items)
+    return f'<div class="recommendations-card"><h4>{title}</h4><div>{body}</div></div>'
+
+
+def similar_cases_card_html(title: str, body_html: str) -> str:
+    """Similar cases / reference card (chart or text inside)."""
+    return f'<div class="similar-cases-card"><h4>{title}</h4><div>{body_html}</div></div>'
