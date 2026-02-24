@@ -1,5 +1,5 @@
-# Ondex-inspired HealthTech theme
-# Ref: https://www.framer.com/marketplace/templates/ondex/
+# HealthTech MRI Report — 2024-style (glassmorphism, dark mode in-app)
+# Light defaults; dark mode toggle in sidebar overrides via custom CSS
 
 [theme]
 primaryColor = "#0d9488"

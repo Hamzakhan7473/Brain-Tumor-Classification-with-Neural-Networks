@@ -49,18 +49,22 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-inject_apple_css()
-
 app_config = load_app_config()
 class_names = get_class_names()
 models_for_inference = app_config.get("models_for_inference", ["custom_cnn", "xception", "transfer"])
 llm_config = app_config.get("llm", {})
 providers = llm_config.get("providers", [{"id": "gemini", "name": "Google Gemini 1.5 Flash", "model_id": "gemini-1.5-flash"}])
 
-# ——— Sidebar (dashboard nav) ———
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = False
+
+# ——— Sidebar (dashboard nav + theme) ———
 with st.sidebar:
     st.markdown("### 🧠 MRI Report")
     st.markdown("")
+    dark_mode = st.toggle("Dark mode", value=st.session_state.dark_mode, help="Easier on the eyes in low light")
+    if dark_mode != st.session_state.dark_mode:
+        st.session_state.dark_mode = dark_mode
     st.markdown("**Navigate**")
     st.markdown("• **Report dashboard** — upload & view report")
     st.markdown("• **Model comparison** — compare CNNs")
@@ -77,6 +81,8 @@ with st.sidebar:
         label_visibility="collapsed",
     )
     llm_model_id = next((p.get("model_id") for p in providers if p["id"] == llm_provider), None)
+
+inject_apple_css(dark=st.session_state.dark_mode)
 
 # ——— Landing: no image ———
 if "upload_key" not in st.session_state:
