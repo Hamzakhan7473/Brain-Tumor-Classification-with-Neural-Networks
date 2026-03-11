@@ -2,10 +2,15 @@
 Main Streamlit app: HealthTech-style MRI report dashboard for doctors.
 Upload Brain MRI → structured findings, saliency, similar cases, AI insights, export.
 Run from project root: streamlit run src/app/streamlit_app.py
+
+This UI is a **demo/front-end** for the underlying services. In a real clinical
+setting, the backend would be exposed via authenticated APIs and integrated into
+existing radiology workflows.
 """
 import sys
 from pathlib import Path
 from datetime import datetime
+import uuid
 
 # Ensure project root is on path when run as script
 _ROOT = Path(__file__).resolve().parents[2]
@@ -36,6 +41,7 @@ from src.app.report_helpers import (
     recommended_next_steps,
     CLASS_DISPLAY,
 )
+from src.app.audit import log_event
 
 import numpy as np
 from src.inference.predict import predict_from_bytes, load_model, MODEL_INPUT_SIZES
@@ -55,8 +61,14 @@ models_for_inference = app_config.get("models_for_inference", ["custom_cnn", "xc
 llm_config = app_config.get("llm", {})
 providers = llm_config.get("providers", [{"id": "gemini", "name": "Google Gemini 1.5 Flash", "model_id": "gemini-1.5-flash"}])
 
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = False
+if "ai_content" not in st.session_state:
+    st.session_state.ai_content = ""
+if "report_reviewed" not in st.session_state:
+    st.session_state.report_reviewed = False
 
 # ——— Sidebar (dashboard nav + theme) ———
 with st.sidebar:
@@ -125,6 +137,19 @@ first_model = list(results.keys())[0]
 primary_label = results[first_model]["label"]
 primary_conf = results[first_model]["confidence"]
 probs = results[first_model].get("probs")  # numpy array or None; don't use "or {}" (array truth is ambiguous)
+
+log_event(
+    "inference",
+    {
+        "session_id": st.session_state.session_id,
+        "primary_label": primary_label,
+        "primary_confidence": primary_conf,
+        "models": {
+            name: {"label": res["label"], "confidence": res["confidence"]}
+            for name, res in results.items()
+        },
+    },
+)
 
 # ——— Dashboard top bar ———
 report_topbar(title="MRI Report", show_search=True)
@@ -208,15 +233,24 @@ with col_btn1:
 with col_btn2:
     gen_report = st.button("Generate full report")
 
-ai_content = ""
 if gen_expl:
     try:
         from src.llm.explanations import explain_image
         pred_summary = "; ".join([f"{k}: {v['label']} ({v['confidence']:.0%})" for k, v in results.items()])
         with st.spinner("Generating explanation…"):
-            ai_content = explain_image(image_bytes, pred_summary, provider=llm_provider, model_id=llm_model_id) or ""
-        st.markdown("---")
-        st.markdown(ai_content or "*No response.*")
+            content = explain_image(image_bytes, pred_summary, provider=llm_provider, model_id=llm_model_id) or ""
+        st.session_state.ai_content = content
+        st.session_state.report_reviewed = False
+        log_event(
+            "llm_explanation",
+            {
+                "session_id": st.session_state.session_id,
+                "provider": llm_provider,
+                "model_id": llm_model_id,
+                "primary_label": primary_label,
+                "primary_confidence": primary_conf,
+            },
+        )
     except Exception as e:
         st.error(f"Explanation failed (set GOOGLE_API_KEY in .env): {e}")
 if gen_report:
@@ -224,11 +258,33 @@ if gen_report:
         from src.llm.report import build_report
         with st.spinner("Generating report…"):
             report = build_report(image_bytes, primary_label, primary_conf, provider=llm_provider, model_id=llm_model_id)
-        ai_content = report or ""
-        st.markdown("---")
-        st.markdown(ai_content or "*No response.*")
+        st.session_state.ai_content = report or ""
+        st.session_state.report_reviewed = False
+        log_event(
+            "llm_report",
+            {
+                "session_id": st.session_state.session_id,
+                "provider": llm_provider,
+                "model_id": llm_model_id,
+                "primary_label": primary_label,
+                "primary_confidence": primary_conf,
+            },
+        )
     except Exception as e:
         st.error(f"Report failed (set GOOGLE_API_KEY in .env): {e}")
+
+if st.session_state.ai_content:
+    st.markdown("---")
+    st.markdown(st.session_state.ai_content or "*No response.*")
+    st.info(
+        "AI content is a draft and must be reviewed by a qualified clinician before it "
+        "is treated as part of the clinical record. Descriptions of size or location are not "
+        "grounded to segmentation or measurements—only the classifier output is model-derived."
+    )
+    st.session_state.report_reviewed = st.checkbox(
+        "Mark AI-generated content as reviewed by a clinician (enables export)",
+        value=st.session_state.report_reviewed,
+    )
 
 # ——— Export report (HTML for download / print to PDF) ———
 st.markdown("---")
@@ -238,15 +294,30 @@ export_html = _build_export_html(
     primary_conf=primary_conf,
     findings_rows=findings_rows,
     steps=steps,
-    ai_content=ai_content,
+    ai_content=st.session_state.ai_content,
 )
-st.download_button(
+did_download = st.download_button(
     label="Download report (HTML)",
     data=export_html,
     file_name=f"brain_mri_report_{datetime.now().strftime('%Y%m%d_%H%M')}.html",
     mime="text/html",
+    disabled=not (st.session_state.ai_content and st.session_state.report_reviewed),
 )
-st.caption("Open in browser and use Print → Save as PDF for a PDF copy.")
+if did_download:
+    log_event(
+        "export_report",
+        {
+            "session_id": st.session_state.session_id,
+            "primary_label": primary_label,
+            "primary_confidence": primary_conf,
+            "has_ai_content": bool(st.session_state.ai_content),
+            "report_reviewed": bool(st.session_state.report_reviewed),
+        },
+    )
+st.caption(
+    "Export is enabled only after AI content has been generated and explicitly marked as reviewed. "
+    "Open the HTML in a browser and use Print → Save as PDF for a PDF copy."
+)
 
 
 def _escape_html(s: str) -> str:

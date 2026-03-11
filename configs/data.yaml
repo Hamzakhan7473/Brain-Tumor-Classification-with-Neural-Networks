@@ -13,6 +13,10 @@ splits:
   test_ratio: 0.10
   seed: 42
   stratify: true
+  # Patient-based split: set true and provide metadata_file to avoid data leakage (same patient not in train and test).
+  # metadata_file: CSV with columns "filename" (path relative to raw_dir, e.g. glioma/img1.jpg), "patient_id".
+  patient_split: false
+  metadata_file: null   # e.g. data/raw/metadata.csv
 
 # Expected folder structure under raw_dir: class_name/sample.png
 # masoudnickparvar/brain-tumor-mri-dataset (via kagglehub) uses:

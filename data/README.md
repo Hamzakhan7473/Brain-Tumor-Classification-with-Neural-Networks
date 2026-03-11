@@ -28,6 +28,15 @@ data/
 
 Class names in `configs/data.yaml` must match these folder names (`glioma`, `meningioma`, `pituitary`, `notumor`).
 
+### Patient-based split (recommended to avoid data leakage)
+
+To split by **patient ID** (so the same patient is not in both train and test), create a CSV at e.g. `data/raw/metadata.csv` with columns:
+
+- **filename**: path relative to `raw_dir`, e.g. `glioma/img1.jpg`
+- **patient_id**: unique identifier per patient (e.g. from dataset docs or inferred from filename)
+
+Then in `configs/data.yaml` set `splits.patient_split: true` and `splits.metadata_file: data/raw/metadata.csv`. See `docs/roadmap-radiologist-questions.md` for details.
+
 ## Download
 
 ### Option 1: kagglehub (recommended)

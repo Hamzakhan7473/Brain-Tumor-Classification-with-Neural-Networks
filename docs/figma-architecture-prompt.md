@@ -53,3 +53,57 @@ Copy the prompt below into Figma (e.g. AI design or diagram generation) to creat
 5. **Consumer:** Streamlit app uploads MRI, runs inference and LLM, shows dashboard and export.
 
 Use boxes and arrows; label flows; minimal text per box.
+
+---
+
+## Radiology pipeline (full diagram — best for Figma)
+
+Use this prompt for a single, end-to-end radiology architecture diagram. Left-to-right or top-to-bottom flow; one clear pipeline.
+
+**Prompt (copy-paste):**
+
+Create a single end-to-end architecture diagram for a Radiology AI pipeline: from MRI input to structured report and follow-ups. Use a clear left-to-right (or top-to-bottom) flow. No paragraphs inside boxes — only short labels.
+
+**1. INPUT (left/top)**  
+- Box: "MRI scan (brain)" with icon or placeholder.  
+- Arrow labeled "upload" to next stage.
+
+**2. DATA & PREPROCESSING**  
+- Box: "Raw dataset (e.g. Kaggle Brain Tumor MRI)".  
+- Box: "Data loader" — resize, normalize, augment; train/val split.  
+- Arrows: dataset → loader; label arrows "config (splits, augmentation)".
+
+**3. MODEL TRAINING (parallel branches)**  
+- Three boxes in a row or column:  
+  - "Custom CNN" (from scratch)  
+  - "Xception" (pre-trained, fine-tuned)  
+  - "Transfer model" (e.g. EfficientNet/ResNet, fine-tuned)  
+- One box: "Training engine" — callbacks: early stopping, checkpoint, LR schedule; config-driven.  
+- Arrows: Data loader → each model; Model config → Training engine; Training engine → "Saved models (.keras)".  
+- One box: "Saved models" — list: custom_cnn_best, xception_best, transfer_best.
+
+**4. INFERENCE & INTERPRETABILITY**  
+- Box: "Inference API" — load model, preprocess image → prediction (class, confidence, probabilities).  
+- Box: "Saliency / explainability" — gradient-based map (which regions drove the decision).  
+- Arrows: MRI image → Inference API; Inference API → Saliency; Inference API → "predictions".
+
+**5. LLM & REPORTING**  
+- Box: "LLM client (e.g. Gemini)" — image + text in, clinical-style text out.  
+- Two boxes: "Explanations" (short) and "Report builder" (structured: findings, insights, next steps).  
+- Arrow: predictions + image → LLM; LLM → Explanations & Report.  
+- Small note: "API key via .env; config (app.yaml)".
+
+**6. CLINICAL CONSUMER**  
+- Box: "Radiology assistant UI (e.g. Streamlit)" — upload MRI → run pipeline → dashboard: findings, status pills (Normal/Follow/Refer), saliency, AI insights, recommended next steps, export report (HTML/PDF).  
+- Arrows: All of the above feed into this UI; label "audit-friendly, deployable".
+
+**7. EXTERNAL (optional)**  
+- Small boxes: "Config (data.yaml, model yamls)" and ".env (secrets)" with dashed arrows into Training engine and LLM.
+
+**Style and best practices:**  
+- Rectangles for components; rounded for "output" or "artifact" (e.g. Saved models, Report).  
+- Solid arrows = data flow; dashed = config/secrets.  
+- Label every arrow (e.g. "MRI", "predictions", "saved .keras", "structured report").  
+- Color coding: input = neutral; data/training = blue/gray; inference/saliency = teal; LLM/report = green; UI = one accent (e.g. orange or purple).  
+- Optional: add a thin horizontal "timeline" bar at top: "Acquire → Ingest → Train → Deploy → Infer → Explain → Report → Follow-up".  
+- Keep the diagram readable at one glance; no more than 2 lines of text per box.

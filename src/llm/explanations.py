@@ -11,7 +11,8 @@ def explain_image(image_path_or_bytes, model_prediction: str, provider: str = "g
         "You are a medical imaging assistant. Based on this brain MRI scan and the following "
         "classification result from an AI model, provide a brief, clear explanation in plain language "
         "for a clinician. Do not diagnose; only describe what the image might show and how it relates "
-        "to the prediction.\n\nModel prediction: " + model_prediction
+        "to the prediction. Do not state size, dimensions, or precise anatomical location—only general "
+        "appearance in relation to the model's prediction.\n\nModel prediction: " + model_prediction
     )
     client = get_llm_client(provider=provider, model_id=model_id)
     return generate_with_image(client, image_path_or_bytes, prompt)
