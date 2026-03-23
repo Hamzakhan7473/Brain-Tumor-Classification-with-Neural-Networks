@@ -1,0 +1,25 @@
+# 3D CNN training configuration (volume classification)
+# Use with: python scripts/train_3d.py --config configs/model_3d.yaml
+
+model:
+  name: cnn_3d
+  input_shape: [96, 96, 96, 1]  # (D, H, W, C); match configs/data_3d.yaml volume.shape + 1 channel
+  num_classes: 4
+  filters: [32, 64, 128, 256]
+  dense_units: [256, 128]
+  dropout: 0.5
+
+training:
+  epochs: 50
+  batch_size: 4
+  optimizer: adam
+  learning_rate: 0.0005
+  lr_factor: 0.5
+  lr_patience: 5
+  early_stopping_patience: 10
+  early_stopping_monitor: val_accuracy
+
+paths:
+  checkpoint_dir: models/checkpoints/cnn_3d
+  save_best: models/saved/cnn_3d_best.keras
+  save_final: models/saved/cnn_3d_final.keras

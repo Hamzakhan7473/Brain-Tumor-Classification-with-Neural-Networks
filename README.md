@@ -15,6 +15,7 @@ A research-oriented pipeline for classifying brain MRI scans using convolutional
 - [Usage](#usage)
 - [Challenges & Extensions](#challenges--extensions)
 - [References](#references)
+ - [Compliance baseline](#compliance-baseline)
 
 ---
 
@@ -152,7 +153,11 @@ brain_tumor_Cnn/
 ├── docs/
 │   ├── methodology.md        # Detailed methodology
 │   ├── api.md                # API / function reference
-│   └── challenges.md         # Challenge write-ups and results
+│   ├── challenges.md         # Challenge write-ups and results
+│   ├── roadmap-research-to-hospital-grade.md  # 24-mo path to FDA-clearable product
+│   ├── workflows-and-features.md   # Features + phased to-do (AWS/GCP credits)
+│   ├── startup-gap-analysis.md     # Market, gaps, positioning
+│   └── intelligence-market-regulatory-gtm.md  # TAM, FDA, competitors, GTM
 └── scripts/
     ├── download_data.sh      # Kaggle CLI download
     ├── train_custom_cnn.py   # CLI training
@@ -195,6 +200,12 @@ brain_tumor_Cnn/
    python scripts/train_transfer.py --config configs/transfer.yaml
    ```
 
+6. **Run the REST API (Phase 1 roadmap — DICOM + predict + report):**
+   ```bash
+   uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+   ```
+   Then open `http://localhost:8000/docs` for Swagger UI. Endpoints: `POST /predict` (image or DICOM → label + probabilities), `POST /report` (+ LLM draft). Or run with Docker: `docker build -t brain-tumor-mri-api . && docker run -p 8000:8000 brain-tumor-mri-api`.
+
 ### Troubleshooting
 
 - **`ImportError: cannot import name 'runtime_version' from 'google.protobuf'`** — TensorFlow does **not** work with protobuf 4.x. Use protobuf 5.x or 3.20.x and reinstall TensorFlow:
@@ -231,8 +242,23 @@ brain_tumor_Cnn/
 - **Custom CNN:** `python scripts/train_custom_cnn.py --config configs/custom_cnn.yaml`
 - **Xception:** `python scripts/train_xception.py --config configs/xception.yaml`
 - **Transfer model:** `python scripts/train_transfer.py --config configs/transfer.yaml`
+- **3D CNN (NIfTI volumes):** Place BraTS-style data under `data/raw_3d/<class>/<case_id>/*.nii.gz`, then run  
+  `python scripts/train_3d.py --config configs/model_3d.yaml --data-config configs/data_3d.yaml`  
+  See `data/README.md` for 3D folder layout and `docs/roadmap-research-to-hospital-grade.md` for BraTS links.
 
 Training logs and checkpoints are written to `models/checkpoints/`. Final models are saved to `models/saved/`.
+
+### Evaluation
+
+- **Validation loss/accuracy (same split as training):**  
+  `python scripts/evaluate_models.py`
+- **Held-out test split + confusion matrix + per-class metrics + optional JSON** (for `docs/validation-report-template.md`):  
+  `python scripts/evaluate_test_metrics.py --out-json docs/validation-metrics-latest.json`  
+  Uses stratified 75/15/10 with the same seed as `configs/data.yaml` (image-level; use patient metadata when available for claims).
+
+### Cloud deployment
+
+- Step-by-step **GCP Cloud Run** and **AWS ECR** → **App Runner**: see **`docs/deploy-cloud.md`**.
 
 ### Streamlit Application
 
@@ -262,6 +288,15 @@ From the app you can:
 | **6** | Add a Streamlit dashboard to compare predictions of multiple CNN models side-by-side | `src/app/pages/model_comparison.py` |
 
 Detailed write-ups and results can be documented in `docs/challenges.md`.
+
+---
+
+## Compliance Baseline
+
+This repo is currently a **research-oriented prototype**. For a minimum compliance and security baseline (BAA-ready architecture, encryption, RBAC, audit, logging, and cloud choices), see:
+
+- `docs/roadmap-research-to-hospital-grade.md` — full 24‑month path to a hospital-grade, FDA-clearable product.
+- `docs/compliance-baseline.md` — technical checklist for HIPAA/BAA-ready deployments (encryption, access control, audit/logging, cloud services).
 
 ---
 

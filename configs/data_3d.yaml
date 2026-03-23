@@ -1,0 +1,38 @@
+# 3D volume data configuration (NIfTI / BraTS-style)
+# Used by src/data/dataset_3d.py and scripts/train_3d.py
+# See docs/roadmap-research-to-hospital-grade.md for BraTS and other 3D sources.
+
+dataset:
+  name: brain_tumor_3d
+  # Directory containing class subfolders, each with case folders that have .nii.gz files
+  # Example: raw_3d/glioma/case_001/flair.nii.gz, raw_3d/meningioma/case_002/t1.nii.gz
+  raw_dir: data/raw_3d
+  processed_dir: data/processed_3d
+
+splits:
+  train_ratio: 0.75
+  val_ratio: 0.15
+  test_ratio: 0.10
+  seed: 42
+  stratify: true
+  # Patient-level: same as 2D; metadata_file CSV with case_id (or path), patient_id, label
+  patient_split: false
+  metadata_file: null  # e.g. data/raw_3d/metadata_3d.csv
+
+classes:
+  - glioma
+  - meningioma
+  - pituitary
+  - notumor
+
+# 3D volume settings (crop/pad to this shape to control memory)
+volume:
+  shape: [96, 96, 96]  # [depth, height, width]; reduce if OOM (e.g. 64,64,64)
+  channels: 1          # single sequence per volume (e.g. FLAIR); set 4 for multi-sequence later
+  dtype: float32
+  normalize: true      # z-score per volume or 0-1
+  # Which file to load when multiple NIfTI per case (first match)
+  preferred_sequences: [flair.nii.gz, t2.nii.gz, t1.nii.gz, t1ce.nii.gz, volume.nii.gz]
+
+batch_size: 4         # small for 3D (GPU memory)
+num_workers: 0        # no multiprocessing for 3D load in TF dataset

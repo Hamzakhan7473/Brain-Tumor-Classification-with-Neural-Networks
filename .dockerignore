@@ -1,0 +1,45 @@
+# Git and env
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv
+.venv
+env
+*.egg-info
+.eggs
+
+# Data (do not ship raw data in image)
+data/raw
+data/processed
+*.dcm
+*.dicom
+
+# Models (mount at runtime or build in separate stage if needed)
+# models/saved/
+# Uncomment above to exclude weights and mount a volume
+
+# IDE and OS
+.idea
+.vscode
+*.swp
+.DS_Store
+
+# Docs and dev (optional: remove to shrink image)
+# docs/
+# notebooks/
+# *.md
+
+# Logs and temp
+logs
+*.log
+tmp
+temp

@@ -2,7 +2,9 @@
 
 Deep research on building this project as a **startup**: market, competition, regulatory, technical, and operational gaps, plus prioritized recommendations.
 
-**Related:** Detailed market, regulatory, and GTM intelligence (TAM anchors, FDA pathways, competitor 510(k)s, pricing, design-partner tactics) is in **`docs/intelligence-market-regulatory-gtm.md`** (sourced from external deep-research report).
+**Related:**  
+- **Market/regulatory/GTM intelligence:** `docs/intelligence-market-regulatory-gtm.md` (TAM anchors, FDA pathways, competitor 510(k)s, pricing, design-partner tactics).  
+- **24-month hospital-grade roadmap:** `docs/roadmap-research-to-hospital-grade.md` (research prototype → FDA-clearable product: DICOM, 3D segmentation, DICOM SEG/SR, IHE AIW-I/AIR, QMSR, PCCP, 510(k) path, phased sprints, staffing, costs, datasets, pilot plan).
 
 ---
 
@@ -121,6 +123,38 @@ Deep research on building this project as a **startup**: market, competition, re
 | **Sales motion** | No direct sales, no design partners, no pilots. Viz-style playbook: direct sales + clinical evidence + workflow impact. |
 | **Pricing** | No model. Benchmarks: NeuroCare ~$50K–$300K/yr; Viz ~$40M revenue at scale. Early stage: pilot pricing or per-study. |
 | **Churn and retention** | No usage analytics, no feedback loop from sites. Need: adoption metrics, satisfaction, and clinical outcome tracking (where possible). |
+
+---
+
+## 5. Initial segment and value proposition (T1 — first pass)
+
+**First segment (who):**
+
+- **Primary:** Academic **neuroradiology / neuro-oncology** teams willing to run **retrospective and shadow-mode** validations:
+  - 1–2 design partners with IRB-approved retrospective brain tumor MRI cohorts.
+  - Data stays on their side or in a BAA-covered VPC; your API + UI run in **shadow mode** (no effect on clinical reads).
+
+**Core value proposition (what they get):**
+
+- A **“retrospective validation + workflow insights pack”** for brain tumor MRI AI:
+  - Patient-level performance report (sensitivity, specificity, PPV, NPV, confusion matrix) on their own data.
+  - Structured **classification + recommended next steps** report drafts that map to their existing reporting templates.
+  - Simple workflow metrics (time, clicks, edits) vs. their current report-writing process.
+  - A DICOM- and API-first architecture with a **compliance baseline** they can review (DICOM in, audit logs, BAA-ready cloud design).
+
+**Framing (how to say it):**
+
+- “We help academic neuro teams **quantify and prototype** a brain tumor MRI AI assistant on their own data, in **retrospective/shadow mode**, with:
+  - Patient-level validation and confusion matrices they can present in conferences and manuscripts.
+  - Structured, template-based report drafts that still keep the radiologist fully in control.
+  - An architecture and compliance baseline that can be upgraded later to 3D segmentation and FDA-ready workflows.”
+
+**Out of scope for the first segment:**
+
+- Full surgical planning, volumetric 3D segmentation, or production PACS integration.
+- Community/rural hospitals and teleradiology at scale—these come **after**:
+  - 1–2 strong academic design partners.
+  - Clear validation reports and reference sites.
 
 ---
 

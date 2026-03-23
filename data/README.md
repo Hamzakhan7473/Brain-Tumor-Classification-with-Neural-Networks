@@ -66,6 +66,36 @@ python scripts/check_backend_and_data.py
 
 This checks config, `data/raw` layout, class counts, and (if TensorFlow is installed) one batch from the data pipeline.
 
+## 3D volumes (NIfTI / BraTS-style)
+
+For **3D CNN training** (`scripts/train_3d.py`), place NIfTI volumes under `data/raw_3d/` with one folder per class and one folder per case:
+
+```
+data/
+  raw_3d/
+    glioma/
+      case_001/
+        flair.nii.gz   # or t2.nii.gz, t1.nii.gz, volume.nii.gz
+      case_002/
+        flair.nii.gz
+    meningioma/
+      ...
+    pituitary/
+      ...
+    notumor/
+      ...
+```
+
+- Config: `configs/data_3d.yaml` (volume shape, batch size, paths).
+- Preferred filenames per case: `flair.nii.gz`, `t2.nii.gz`, `t1.nii.gz`, `volume.nii.gz` (first found is used).
+- Public 3D sources: **BraTS** (RSNA-ASNR-MICCAI, TCIA), **BraTS Meningioma**, **UCSF-PDGM** — see `docs/roadmap-research-to-hospital-grade.md` for links. You may need to convert or reorganize to the structure above.
+
+Run 3D training (after installing `nibabel` and placing data):
+
+```bash
+python scripts/train_3d.py --config configs/model_3d.yaml --data-config configs/data_3d.yaml
+```
+
 ## License
 
 Respect the license of the dataset you use. Do not commit raw image data to the repository.

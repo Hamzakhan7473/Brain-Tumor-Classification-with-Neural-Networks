@@ -1,5 +1,5 @@
 """Report logic for healthtech dashboard: status from prediction, recommended next steps."""
-from typing import Any
+from typing import Any, List
 
 # Display labels for classes
 CLASS_DISPLAY = {
@@ -93,3 +93,44 @@ def build_findings_rows(
         agree = "Yes" if len(set(labels)) == 1 else "No — review models"
         rows.append(("Model agreement", agree, "normal" if agree == "Yes" else "review"))
     return rows
+
+
+def build_structured_report_markdown(
+    primary_label: str,
+    primary_confidence: float,
+    findings_rows: list[tuple[str, str, str]],
+    steps: List[str],
+) -> str:
+    """
+    Build a structured, template-style report using only measured/model-derived outputs.
+
+    Sections:
+    - Prediction summary (from primary label + confidence)
+    - Structured findings table (from findings_rows)
+    - Recommended next steps (from recommended_next_steps)
+    - Note on limitations / human review
+    """
+    display_label = CLASS_DISPLAY.get(
+        primary_label.lower().replace(" ", "").replace("_", ""), primary_label
+    )
+    lines: List[str] = []
+    lines.append("## Prediction summary")
+    lines.append(f"- Primary classification: **{display_label}**")
+    lines.append(f"- Model confidence: **{primary_confidence:.0%}**")
+    lines.append("")
+    lines.append("## Structured findings")
+    for metric, value, status in findings_rows:
+        lines.append(f"- **{metric}** — {value}  _(status: {status})_")
+    lines.append("")
+    lines.append("## Recommended next steps")
+    for step in steps:
+        lines.append(f"- {step}")
+    lines.append("")
+    lines.append("## Notes")
+    lines.append(
+        "- This report is generated from model outputs only and is **not a definitive diagnosis**."
+    )
+    lines.append(
+        "- Descriptions are not grounded to volumetric measurements or segmentation; a radiologist must review the scan and this report."
+    )
+    return "\n".join(lines)

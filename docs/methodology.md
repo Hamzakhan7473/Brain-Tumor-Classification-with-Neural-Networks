@@ -32,6 +32,7 @@ Classify brain MRI scans into tumor categories (e.g. Glioma, Meningioma, No Tumo
 
 ## Evaluation
 
+- **Default for claimed metrics:** When a metadata CSV with `filename` and `patient_id` is available, all *reported* metrics (e.g. in docs or presentations) should be computed with **`splits.patient_split: true`** and the corresponding `splits.metadata_file` set in `configs/data.yaml`, so that the same patient never appears in more than one split.
 - Test set accuracy and per-class metrics (precision, recall, F1).
 - Optional: confusion matrix, ROC curves for multi-class.
 

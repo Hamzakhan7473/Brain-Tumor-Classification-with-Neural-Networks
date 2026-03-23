@@ -48,6 +48,62 @@ from src.inference.predict import predict_from_bytes, load_model, MODEL_INPUT_SI
 from src.inference.saliency import generate_saliency_map
 from src.data.dataset import load_image_from_bytes
 
+
+def _escape_html(s: str) -> str:
+    return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") if s else "")
+
+
+def _build_export_html(
+    primary_label: str,
+    primary_conf: float,
+    findings_rows: list[tuple[str, str, str]],
+    steps: list[str],
+    ai_content: str,
+) -> str:
+    """Build a self-contained HTML report for download (print to PDF)."""
+    rows_html = "".join(
+        f"<tr><td>{l}</td><td>{v}</td><td>{s}</td></tr>" for l, v, s in findings_rows
+    )
+    steps_html = "".join(f"<li>{_escape_html(s)}</li>" for s in steps)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Brain MRI Report</title>
+  <style>
+    body {{ font-family: system-ui, sans-serif; max-width: 700px; margin: 2rem auto; padding: 1rem; color: #1e293b; }}
+    h1 {{ font-size: 1.5rem; }}
+    .meta {{ color: #64748b; font-size: 0.9rem; margin-bottom: 1.5rem; }}
+    table {{ width: 100%; border-collapse: collapse; margin: 1rem 0; }}
+    th, td {{ padding: 0.5rem; text-align: left; border-bottom: 1px solid #e2e8f0; }}
+    th {{ font-weight: 600; color: #475569; }}
+    .section {{ margin-top: 1.5rem; }}
+    .section h2 {{ font-size: 1.1rem; margin-bottom: 0.5rem; }}
+    ul {{ padding-left: 1.25rem; }}
+    .ai-content {{ white-space: pre-wrap; background: #f8fafc; padding: 1rem; border-radius: 8px; margin-top: 0.5rem; }}
+  </style>
+</head>
+<body>
+  <h1>Brain MRI — Classification Report</h1>
+  <p class="meta">Generated {datetime.now().strftime('%B %d, %Y at %H:%M')}. AI-assisted; not a substitute for clinical judgment.</p>
+  <div class="section">
+    <h2>Findings</h2>
+    <table>
+      <thead><tr><th>Metric</th><th>Value</th><th>Status</th></tr></thead>
+      <tbody>{rows_html}</tbody>
+    </table>
+  </div>
+  <div class="section">
+    <h2>Recommended next steps</h2>
+    <ul>{steps_html}</ul>
+  </div>
+  <div class="section">
+    <h2>AI insights</h2>
+    <div class="ai-content">{_escape_html(ai_content or "— Not generated —")}</div>
+  </div>
+</body>
+</html>"""
+
 st.set_page_config(
     page_title="Brain Tumor MRI — Clinical Report",
     page_icon="🧠",
@@ -175,7 +231,7 @@ st.markdown(findings_card_html("MRI findings", findings_rows), unsafe_allow_html
 col_left, col_right = st.columns([1, 1])
 with col_left:
     apple_card_markdown('<p style="margin:0; font-size:0.95rem; color:#6e6e73;">Scan</p>')
-    st.image(image_bytes, use_container_width=True)
+    st.image(image_bytes, width="stretch")
     # Saliency
     size = MODEL_INPUT_SIZES.get(first_model, (224, 224))
     batch = load_image_from_bytes(image_bytes, target_size=size, normalize=True)
@@ -226,12 +282,32 @@ st.markdown(recommendations_card_html("Recommended next steps", steps), unsafe_a
 # ——— AI explanation & report + Export ———
 st.markdown('<div class="apple-divider"></div>', unsafe_allow_html=True)
 card_header("AI insights & report")
-st.caption("Generate explanation or full clinical-style report (requires GOOGLE_API_KEY in .env).")
-col_btn1, col_btn2, _ = st.columns([1, 1, 2])
+st.caption(
+    "You can generate a structured template report from the model outputs alone, or use an LLM "
+    "for a narrative explanation (requires GOOGLE_API_KEY in .env)."
+)
+col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
 with col_btn1:
-    gen_expl = st.button("Generate explanation")
+    gen_template = st.button("Structured template (no LLM)")
 with col_btn2:
-    gen_report = st.button("Generate full report")
+    gen_expl = st.button("LLM explanation")
+with col_btn3:
+    gen_report = st.button("LLM full report")
+
+if gen_template:
+    from src.app.report_helpers import build_structured_report_markdown
+
+    content = build_structured_report_markdown(primary_label, primary_conf, findings_rows, steps)
+    st.session_state.ai_content = content
+    st.session_state.report_reviewed = False
+    log_event(
+        "structured_report",
+        {
+            "session_id": st.session_state.session_id,
+            "primary_label": primary_label,
+            "primary_confidence": primary_conf,
+        },
+    )
 
 if gen_expl:
     try:
@@ -318,59 +394,3 @@ st.caption(
     "Export is enabled only after AI content has been generated and explicitly marked as reviewed. "
     "Open the HTML in a browser and use Print → Save as PDF for a PDF copy."
 )
-
-
-def _escape_html(s: str) -> str:
-    return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") if s else "")
-
-
-def _build_export_html(
-    primary_label: str,
-    primary_conf: float,
-    findings_rows: list[tuple[str, str, str]],
-    steps: list[str],
-    ai_content: str,
-) -> str:
-    """Build a self-contained HTML report for download (print to PDF)."""
-    rows_html = "".join(
-        f"<tr><td>{l}</td><td>{v}</td><td>{s}</td></tr>" for l, v, s in findings_rows
-    )
-    steps_html = "".join(f"<li>{_escape_html(s)}</li>" for s in steps)
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Brain MRI Report</title>
-  <style>
-    body {{ font-family: system-ui, sans-serif; max-width: 700px; margin: 2rem auto; padding: 1rem; color: #1e293b; }}
-    h1 {{ font-size: 1.5rem; }}
-    .meta {{ color: #64748b; font-size: 0.9rem; margin-bottom: 1.5rem; }}
-    table {{ width: 100%; border-collapse: collapse; margin: 1rem 0; }}
-    th, td {{ padding: 0.5rem; text-align: left; border-bottom: 1px solid #e2e8f0; }}
-    th {{ font-weight: 600; color: #475569; }}
-    .section {{ margin-top: 1.5rem; }}
-    .section h2 {{ font-size: 1.1rem; margin-bottom: 0.5rem; }}
-    ul {{ padding-left: 1.25rem; }}
-    .ai-content {{ white-space: pre-wrap; background: #f8fafc; padding: 1rem; border-radius: 8px; margin-top: 0.5rem; }}
-  </style>
-</head>
-<body>
-  <h1>Brain MRI — Classification Report</h1>
-  <p class="meta">Generated {datetime.now().strftime('%B %d, %Y at %H:%M')}. AI-assisted; not a substitute for clinical judgment.</p>
-  <div class="section">
-    <h2>Findings</h2>
-    <table>
-      <thead><tr><th>Metric</th><th>Value</th><th>Status</th></tr></thead>
-      <tbody>{rows_html}</tbody>
-    </table>
-  </div>
-  <div class="section">
-    <h2>Recommended next steps</h2>
-    <ul>{steps_html}</ul>
-  </div>
-  <div class="section">
-    <h2>AI insights</h2>
-    <div class="ai-content">{_escape_html(ai_content or "— Not generated —")}</div>
-  </div>
-</body>
-</html>"""

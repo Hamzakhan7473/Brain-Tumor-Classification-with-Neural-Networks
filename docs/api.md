@@ -27,6 +27,21 @@
 - `src.llm.explanations.explain_image(image, model_prediction, provider)` — Short explanation of the scan.
 - `src.llm.report.build_report(image, prediction, confidence, provider)` — Full report (insights, cases, next steps).
 
+## Evaluation scripts
+
+- `scripts/evaluate_models.py` — Validation accuracy/loss for each saved model (Keras `validation` subset).
+- `scripts/evaluate_test_metrics.py` — Stratified **test** split (75/15/10, seed from `configs/data.yaml`), confusion matrix, sklearn `classification_report`, per-model log loss. Optional: `--out-json path.json`.
+
+## REST API (Phase 1 roadmap)
+
+- **Run:** `uvicorn src.api.main:app --host 0.0.0.0 --port 8000` (from project root). Or: `docker build -t brain-tumor-mri-api . && docker run -p 8000:8000 brain-tumor-mri-api`
+- **Cloud deploy:** `docs/deploy-cloud.md` (GCP Cloud Run, AWS ECR + App Runner).
+- **Endpoints:**
+  - `GET /health` — Health check.
+  - `POST /predict` — Upload image (JPG/PNG or DICOM); query param `model` = `custom_cnn` \| `xception` \| `transfer`. Returns `{ "label", "confidence", "probabilities", "model", "dicom_meta" }`.
+  - `POST /report` — Same as predict plus LLM report draft (requires `GOOGLE_API_KEY`).
+- **DICOM:** `src.data.dicom_loader.load_dicom_slice(path_or_bytes, ...)` — Load DICOM, extract one slice, return (1, H, W, 3) array and optional metadata.
+
 ## App
 
 - `streamlit run src/app/streamlit_app.py` — Launch the main Streamlit app.

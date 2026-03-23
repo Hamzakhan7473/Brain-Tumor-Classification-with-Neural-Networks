@@ -111,23 +111,27 @@ A single list of **workflows** (end-to-end flows) and **features** (capabilities
 
 **Cloud credits:** We have **AWS**, **Google Cloud**, and **other** free credits. Use them for deployment, API, training, and design-partner pilots so foundation and evidence work stays within credits (no heavy infra spend until revenue or funding). The **Cloud** column below says which credit to use for each item where it applies.
 
+**24-month hospital-grade roadmap:** For the full path from research prototype to FDA-clearable product (DICOM, 3D segmentation, DICOM SEG/SR, IHE, QMSR, 510(k)), see **`docs/roadmap-research-to-hospital-grade.md`**. The to-do below is consistent with that roadmap; the hospital-grade doc adds phased sprints, staffing, costs, datasets, regulatory path, and pilot plan.
+
+**Phase 1 build status:** DICOM **ingestion** (T2 in), **REST API** (T4), and **Docker** (T5) are implemented: `src/data/dicom_loader.py`, `src/api/main.py`, `Dockerfile`, `scripts/run_api.sh`. Run with `uvicorn src.api.main:app --port 8000` or `docker run -p 8000:8000 brain-tumor-mri-api`. DICOM **output** (SEG/SR) and full PACS integration are later phases.
+
 ### Phase 1: Foundation (0–6 months)
 
-| # | To do | Cloud | Notes |
-|---|-------|--------|------|
-| T1 | **Define first segment and value prop** (e.g. design partners for retrospective validation; or triage vs draft report for neuro). | — | Drives all product and GTM decisions. |
-| T2 | **DICOM in/out** — Ingest at least one sequence/series; output structured JSON or HL7-friendly. | **AWS or GCP** | Run DICOM parsing/validation in Lambda or Cloud Functions if needed; store sample series in S3 or GCS (stay within credits). |
-| T3 | **Patient-level split as default** for any claimed metrics + one external or multi-site validation (even small). | **GCP or AWS** | Run evaluation/validation jobs on Cloud Run, Lambda, or a small VM; use credits for compute. |
-| T4 | **API-first** — REST: image in → prediction + optional report draft out. | **GCP preferred** | **Google Cloud Run** (containerized app + Gemini already in use) or **AWS Lambda + API Gateway**; both fit free tier / credits. GCP: same account as Gemini, BAA-eligible later. |
-| T5 | **Deployment package** — Docker image, env config, minimal docs; deploy to cloud for pilots. | **GCP + AWS** | **GCP:** Cloud Run (Docker); **AWS:** ECS Fargate or App Runner. Use **other** credits for extra runtimes if needed. Document one path first (e.g. Cloud Run), then add AWS. |
-| T6 | **Compliance baseline** — BAA-ready architecture, encryption (transit/at rest), audit log retention, RBAC, privacy policy. | **GCP or AWS** | **GCP:** HIPAA-eligible services + BAA (see cloud.google.com/security/compliance/hipaa). **AWS:** HIPAA-eligible services + BAA. Design for one cloud first; use credits for compliant storage (GCS/S3), KMS, and logging. |
-| T7 | **Structured report templates** — Report draft from measured/structured outputs (not unconstrained LLM text) when moving toward clinical. | — | Per intelligence: aligns with FDA-cleared tools and RSNA guidance. |
+| # | To do | Status | Cloud | Notes |
+|---|-------|--------|--------|------|
+| T1 | **Define first segment and value prop** (e.g. design partners for retrospective validation; or triage vs draft report for neuro). | **Done (doc)** | — | See `docs/startup-gap-analysis.md` §5 (Initial segment and value proposition). |
+| T2 | **DICOM in/out** — Ingest at least one sequence/series; output structured JSON or HL7-friendly. | **In (done)** / Out later | **AWS or GCP** | DICOM **ingestion** done (`dicom_loader.py`, API). DICOM **output** (SEG/SR) in later phase. |
+| T3 | **Patient-level split as default** for any claimed metrics + one external or multi-site validation (even small). | **Policy in docs** / external TBD | **GCP or AWS** | `docs/methodology.md` — claimed metrics when metadata exists; multi-site validation = next when partner data exists. |
+| T4 | **API-first** — REST: image in → prediction + optional report draft out. | **Done** | **GCP preferred** | `src/api/main.py`: GET /health, POST /predict, POST /report; DICOM or image. |
+| T5 | **Deployment package** — Docker image, env config, minimal docs; deploy to cloud for pilots. | **Done** + **cloud guide** | **GCP + AWS** | Dockerfile + `docs/deploy-cloud.md` (Cloud Run + ECR/App Runner). Run deploy when ready for partner URL. |
+| T6 | **Compliance baseline** — BAA-ready architecture, encryption (transit/at rest), audit log retention, RBAC, privacy policy. | **Doc added** | **GCP or AWS** | See `docs/compliance-baseline.md` for technical checklist. Next: map this onto a concrete GCP or AWS deployment. |
+| T7 | **Structured report templates** — Report draft from measured/structured outputs (not unconstrained LLM text) when moving toward clinical. | **Done (template path in app)** | — | Deterministic, template-style report built from classification + next steps; LLM narrative remains optional. |
 
 ### Phase 2: Evidence and distribution (6–12 months)
 
 | # | To do | Cloud | Notes |
 |---|-------|--------|------|
-| T8 | **Validation report** — Sensitivity, specificity, PPV, NPV, confusion matrix; patient-level split; state limitations. | **GCP or AWS** | Run evaluation pipelines on Cloud Run / Batch or Lambda / Step Functions; store results in GCS/S3. Use credits for compute and storage. |
+| T8 | **Validation report** — Sensitivity, specificity, PPV, NPV, confusion matrix; patient-level split; state limitations. | **GCP or AWS** | Template: `docs/validation-report-template.md`. **Script:** `scripts/evaluate_test_metrics.py` — test split + confusion matrix + per-class report + JSON (`--out-json docs/validation-metrics-latest.json`). Fill template from output; add patient-level when metadata exists. |
 | T9 | **5–10 design partners** — 1–2 deep integration (e.g. academic neuro with IRB+PACS); rest for feedback. Offer “retrospective evaluation pack” (per-patient split, calibration, error analysis by site, clinician feedback). | **GCP or AWS** | Host pilot **API + demo** on Cloud Run or Lambda so partners can hit a stable URL; no on-prem until later. Use credits for traffic and compute. **Other** credits: use for staging or a second region if needed. |
 | T10 | **Segmentation (2D) or 3D path** — If positioning beyond triage: volumes, masks, longitudinal (one high-value cohort, e.g. brain mets or glioma follow-up). | **GCP or AWS** | Training: **GCP Vertex AI** or **AWS SageMaker** (or GPU VMs) within credits. Prefer one provider to simplify BAA later. |
 | T11 | **LLM grounding or strict templates** — If report draft is core; measure error rates; avoid unconstrained generative text in device claim. | **GCP** | Gemini already on GCP; keep LLM eval and logging in same cloud for compliance and cost. |
