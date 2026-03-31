@@ -78,12 +78,40 @@ def predict_from_bytes(
     Preprocess image from bytes, run prediction for one model.
     Returns (predicted_label, confidence, full_probabilities) or (None, None, None) if model missing.
     """
-    from src.data.dataset import load_image_from_bytes
+    label, conf, probs, _ = predict_from_file_bytes(
+        model_name, image_bytes, "image.jpg", class_names, project_root
+    )
+    return label, conf, probs
 
+
+def predict_from_file_bytes(
+    model_name: str,
+    file_bytes: bytes,
+    filename: str,
+    class_names: Optional[list] = None,
+    project_root: Optional[Path] = None,
+) -> Tuple[Optional[str], Optional[float], Optional[np.ndarray], Optional[dict]]:
+    """
+    Preprocess from bytes using filename to detect DICOM vs raster image.
+    Returns (label, confidence, probs, dicom_meta_or_none).
+    """
+    root = project_root or _project_root()
     size = MODEL_INPUT_SIZES.get(model_name, (224, 224))
-    batch = load_image_from_bytes(image_bytes, target_size=size, normalize=True)
-    labels, probs = load_model_and_predict(model_name, batch, class_names, project_root)
+    fn = (filename or "image.jpg").lower()
+    is_dicom = fn.endswith(".dcm") or fn.endswith(".dicom")
+
+    if is_dicom:
+        from src.data.dicom_loader import load_dicom_slice
+
+        batch, dicom_meta = load_dicom_slice(file_bytes, target_size=size, normalize=True)
+    else:
+        from src.data.dataset import load_image_from_bytes
+
+        dicom_meta = None
+        batch = load_image_from_bytes(file_bytes, target_size=size, normalize=True)
+
+    labels, probs = load_model_and_predict(model_name, batch, class_names, root)
     if labels is None or probs is None:
-        return None, None, None
-    idx = np.argmax(probs[0])
-    return labels[0], float(probs[0][idx]), probs[0]
+        return None, None, None, dicom_meta
+    idx = int(np.argmax(probs[0]))
+    return labels[0], float(probs[0][idx]), probs[0], dicom_meta

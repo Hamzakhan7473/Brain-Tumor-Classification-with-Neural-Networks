@@ -151,6 +151,16 @@ A single list of **workflows** (end-to-end flows) and **features** (capabilities
 |---|-------|--------|------|
 | T16 | **Per-layer/per-feature model optimization** — Configurable dropout/activations; document in `docs/challenges.md`. | **GCP or AWS** | Training runs on Vertex AI / SageMaker or GPU VMs within credits; compare configs without extra spend. |
 
+### Clinical workflow (hospital-style path)
+
+**Yes — this is the next product layer** after API + validation: define *who* does *what* with AI outputs (PACS, radiologist, audit), and implement it in **phases** (retrospective → shadow → assistive → PACS).
+
+| Doc | Purpose |
+|-----|---------|
+| **`docs/clinical-workflow.md`** | Phases A–D (research partner → shadow mode → pre-read → integrated), sequence diagram, **engineering backlog** (auth, study UID, shadow store, DICOM series aggregation). |
+
+The backlog there maps to existing to-dos (T6, T9, T14) and is the single place to update as design partners narrow scope.
+
 ---
 
 ## 10. Current vs minimum sellable (from intelligence)
@@ -172,4 +182,4 @@ A single list of **workflows** (end-to-end flows) and **features** (capabilities
 - **Workflows:** Data download → (optional) metadata for patient split → train/val/test load → training (custom CNN, Xception, transfer) → save checkpoints → inference + saliency → Streamlit upload → predictions + explanation + report → export with review.
 - **Features (built):** Patient-based split, three classifiers, saliency maps, multimodal LLM (Gemini) with constrained prompts, chat with scan, clinical-style report, model comparison, audit log, human-in-the-loop export, dark mode, Apple-style UI.
 - **Planned:** Saliency vs mask validation, per-layer optimization, optional 2D segmentation and LLM grounding, 3D/volumetric and surgical as future scope.
-- **To do:** See **§9** for the single ordered list (Phase 1–3 + ongoing) aligned with market, regulatory, and GTM intelligence. **Cloud:** Use **AWS**, **Google Cloud**, and **other** free credits for API (Cloud Run / Lambda), deployment (Docker), validation runs, design-partner pilots, and training—see the **Cloud** column in §9.
+- **To do:** See **§9** for the single ordered list (Phase 1–3 + ongoing) aligned with market, regulatory, and GTM intelligence. **Clinical workflow (phased):** **`docs/clinical-workflow.md`**. **Cloud:** Use **AWS**, **Google Cloud**, and **other** free credits for API (Cloud Run / Lambda), deployment (Docker), validation runs, design-partner pilots, and training—see the **Cloud** column in §9.

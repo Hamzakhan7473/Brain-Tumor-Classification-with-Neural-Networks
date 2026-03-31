@@ -156,6 +156,7 @@ brain_tumor_Cnn/
 │   ├── challenges.md         # Challenge write-ups and results
 │   ├── roadmap-research-to-hospital-grade.md  # 24-mo path to FDA-clearable product
 │   ├── workflows-and-features.md   # Features + phased to-do (AWS/GCP credits)
+│   ├── clinical-workflow.md        # Phased radiology path + backlog (shadow → PACS)
 │   ├── startup-gap-analysis.md     # Market, gaps, positioning
 │   └── intelligence-market-regulatory-gtm.md  # TAM, FDA, competitors, GTM
 └── scripts/
@@ -266,9 +267,12 @@ Training logs and checkpoints are written to `models/checkpoints/`. Final models
 streamlit run src/app/streamlit_app.py
 ```
 
+The UI follows an **enterprise AI glass** pattern (similar to modern compliance platforms): **indigo** accents, mesh background, glassmorphic cards, dual “AI-powered” pills on the landing hero, top navigation, and bold marketing typography — adapted for neuro MRI research. Streamlit runs in the browser; for a native shell you can wrap the same **FastAPI** in **SwiftUI** or a **PWA** later.
+
 From the app you can:
 
 - **Upload a Brain MRI scan** and get predictions from both the custom CNN and Xception (and optionally the second transfer model).
+- **Clinical workflow** (`pages/2_Clinical_workflow.py`): site/study IDs, shadow-mode logging, DICOM or image upload, single-model inference, structured findings, and **clinician feedback** (agree / wrong class / unclear) — see `docs/clinical-workflow.md`.
 - **Select which multimodal LLM** to use for explanations (Challenge 3).
 - **Chat with the MRI image** using the selected LLM (Challenge 4).
 - **View a comprehensive report** with prediction, insights, historical cases, and next steps (Challenge 5).

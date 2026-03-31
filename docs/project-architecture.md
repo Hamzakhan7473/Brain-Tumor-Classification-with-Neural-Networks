@@ -109,6 +109,7 @@ brain_tumor_Cnn/
     ├── roadmap-research-to-hospital-grade.md
     ├── roadmap-radiologist-questions.md
     ├── workflows-and-features.md
+    ├── clinical-workflow.md        # Phased radiology path + engineering backlog
     ├── startup-gap-analysis.md
     ├── intelligence-market-regulatory-gtm.md
     └── assets/

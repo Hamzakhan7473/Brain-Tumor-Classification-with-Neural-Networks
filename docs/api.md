@@ -36,10 +36,13 @@
 
 - **Run:** `uvicorn src.api.main:app --host 0.0.0.0 --port 8000` (from project root). Or: `docker build -t brain-tumor-mri-api . && docker run -p 8000:8000 brain-tumor-mri-api`
 - **Cloud deploy:** `docs/deploy-cloud.md` (GCP Cloud Run, AWS ECR + App Runner).
+- **Auth (optional):** Set `API_KEY` or comma-separated `API_KEYS` in the environment. When set, clients must send header `X-API-Key: <key>`. If unset, the API accepts requests without a key (**development only**). `GET /health` includes `"auth_required": true|false`.
+- **Rate limits:** Per client IP (slowapi), e.g. `/predict` 120/min, `/report` 60/min, `/clinical/feedback` 120/min (defaults may change).
 - **Endpoints:**
   - `GET /health` — Health check.
-  - `POST /predict` — Upload image (JPG/PNG or DICOM); query param `model` = `custom_cnn` \| `xception` \| `transfer`. Returns `{ "label", "confidence", "probabilities", "model", "dicom_meta" }`.
-  - `POST /report` — Same as predict plus LLM report draft (requires `GOOGLE_API_KEY`).
+  - `POST /predict` — Multipart: `file` (required); query param `model` = `custom_cnn` \| `xception` \| `transfer`. Optional form fields: `study_instance_uid`, `site_id`, `shadow_mode` (bool; when true, appends to `logs/shadow_results.jsonl`). Returns `{ "label", "confidence", "probabilities", "model", "dicom_meta", "study_instance_uid", "site_id", "shadow_mode" }`. Also appends to audit log (`api_predict`).
+  - `POST /report` — Same multipart + optional fields as `/predict`, plus LLM report draft (requires `GOOGLE_API_KEY`). Audit: `api_report`.
+  - `POST /clinical/feedback` — JSON body (not multipart): `{ "study_instance_uid", "feedback": "agree"|"wrong_class"|"unclear", "site_id"?, "corrected_class"?, "notes"?, "model"? }`. Appends to `logs/clinical_feedback.jsonl` and audit.
 - **DICOM:** `src.data.dicom_loader.load_dicom_slice(path_or_bytes, ...)` — Load DICOM, extract one slice, return (1, H, W, 3) array and optional metadata.
 
 ## App

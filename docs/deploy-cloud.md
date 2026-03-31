@@ -55,10 +55,36 @@ Then in **AWS Console → App Runner → Create service** from ECR image, port *
 
 ---
 
-## 3. After deploy
+## 3. GCP RAG ingestion job (MongoDB Atlas Vector Search)
+
+Your `/report` endpoint uses MongoDB Atlas Vector Search to retrieve grounding evidence.
+You must populate the vector collection using `scripts/rag_ingest_docs.py` at least once (and re-run when knowledge sources change).
+
+Recommended:
+- Create a Cloud Run Job (or scheduled Cloud Run) in the same region as your deployment.
+- Run the same container image as the API, but override the command to execute the ingestion script.
+
+Environment variables to set:
+- `GOOGLE_API_KEY`
+- `MONGODB_URI`, `MONGODB_DB`
+- `MONGODB_COLLECTION_RAG`
+- `MONGODB_RAG_VECTOR_INDEX`
+- `RAG_EMBED_MODEL` (optional override)
+
+Example (run locally from repo root):
+```bash
+python scripts/rag_ingest_docs.py --docs-glob "docs/**/*.md" --chunk-size-chars 1200 --overlap-chars 180 --batch-size 25
+```
+
+---
+## 4. After deploy
 
 - Point design partners at `https://.../docs` (Swagger) or integrate with your Streamlit app via `API_BASE_URL` (when wired).
 - See `docs/compliance-baseline.md` before enabling PHI (BAA, encryption, audit).
+
+### Frontend (browser) integration notes
+- If you are running a browser frontend (Vite/React), set `CORS_ALLOW_ORIGINS` on the API service to the frontend domain(s).
+- Local dev defaults are allowed automatically: `http://localhost:5173`, `http://127.0.0.1:5173`.
 
 ---
 

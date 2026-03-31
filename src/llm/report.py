@@ -5,8 +5,17 @@ from typing import Optional
 from .client import get_llm_client, generate_with_image
 
 
-def build_report(image_path_or_bytes, prediction: str, confidence: float, provider: str = "gemini", model_id: Optional[str] = None):
+def build_report(
+    image_path_or_bytes,
+    prediction: str,
+    confidence: float,
+    provider: str = "gemini",
+    model_id: Optional[str] = None,
+    *,
+    evidence_context: Optional[str] = None,
+):
     """Generate a structured report with prediction, insights, analogous cases, and next steps."""
+    evidence_block = evidence_context.strip() if evidence_context else ""
     prompt = (
         "You are a medical imaging report assistant. Given this brain MRI scan and the following "
         "AI classification result, generate a concise clinical-style report with these sections:\n"
@@ -19,5 +28,14 @@ def build_report(image_path_or_bytes, prediction: str, confidence: float, provid
         "Any description of findings is not grounded to measurements or segmentation.\n\n"
         f"Model prediction: {prediction} (confidence: {confidence:.2%})."
     )
+
+    if evidence_block:
+        prompt += (
+            "\n\n"
+            "Retrieved evidence (grounding): Use ONLY the information in the evidence block below to support your statements. "
+            "If the evidence does not cover a claim, say 'insufficient evidence from retrieved sources'.\n\n"
+            f"{evidence_block}\n"
+        )
+
     client = get_llm_client(provider=provider, model_id=model_id)
     return generate_with_image(client, image_path_or_bytes, prompt)
