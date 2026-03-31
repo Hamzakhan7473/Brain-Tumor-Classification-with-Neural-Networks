@@ -3,6 +3,7 @@ Load saved models and run prediction on single or batch images.
 Supports different input sizes per model (224 for custom_cnn/transfer, 299 for Xception).
 TensorFlow is imported lazily to avoid protobuf version errors at app startup.
 """
+import os
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
@@ -11,6 +12,14 @@ import numpy as np
 
 def _project_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+def _models_dir(project_root: Optional[Path] = None) -> Path:
+    root = project_root or _project_root()
+    # Allow overriding location for deployments / experiments
+    override = (os.environ.get("MODEL_DIR") or "").strip()
+    if override:
+        return Path(override).expanduser()
+    return root / "models" / "saved"
 
 
 MODEL_PATHS = {
@@ -26,12 +35,50 @@ MODEL_INPUT_SIZES = {
     "transfer": (224, 224),
 }
 
+def list_available_models(project_root: Optional[Path] = None) -> list[str]:
+    """
+    Return model keys that are actually loadable based on file presence.
+    Also discovers additional .keras/.h5 files in MODEL_DIR and exposes them by stem name.
+    """
+    root = project_root or _project_root()
+    available: set[str] = set()
+
+    # 1) known keys from MODEL_PATHS (only if file exists)
+    for key in MODEL_PATHS.keys():
+        if get_model_path(key, root) is not None:
+            available.add(key)
+
+    # 2) discover any saved models on disk
+    try:
+        models_dir = _models_dir(root)
+        if models_dir.exists():
+            for p in models_dir.iterdir():
+                if not p.is_file():
+                    continue
+                if p.suffix.lower() not in (".keras", ".h5"):
+                    continue
+                # expose as stem; users can use MODEL_PATHS to map pretty names later
+                available.add(p.stem)
+    except Exception:
+        pass
+
+    return sorted(available)
+
 
 def get_model_path(model_name: str, project_root: Optional[Path] = None) -> Optional[Path]:
     """Resolve path to saved model; returns None if not found."""
     root = project_root or _project_root()
     rel = MODEL_PATHS.get(model_name)
     if not rel:
+        # Allow loading by direct filename stem in models dir
+        try:
+            models_dir = _models_dir(root)
+            for ext in (".keras", ".h5"):
+                candidate = models_dir / f"{model_name}{ext}"
+                if candidate.exists():
+                    return candidate
+        except Exception:
+            return None
         return None
     path = root / rel
     return path if path.exists() else None

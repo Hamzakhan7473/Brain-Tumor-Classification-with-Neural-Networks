@@ -148,6 +148,9 @@ export default function CaseDetail() {
             <Link to="/report" className="btn-large-outline">
               Open report draft
             </Link>
+            <Link to={`/reading/${encodeURIComponent(stored.study_instance_uid)}`} className="btn btnOutline">
+              Reading mode
+            </Link>
             <Link to="/clinical-feedback" className="btn-primary">
               Give feedback
             </Link>

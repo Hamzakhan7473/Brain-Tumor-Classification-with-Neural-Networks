@@ -11,6 +11,11 @@ class MongoSettings:
     inference_collection: str
     feedback_collection: str
     rag_collection: str
+    auths_collection: str
+    inbox_collection: str
+    traces_collection: str
+    trials_collection: str
+    trial_candidates_collection: str
     enable: bool
 
 
@@ -27,6 +32,11 @@ def load_mongo_settings() -> MongoSettings:
         inference_collection=os.environ.get("MONGODB_COLLECTION_INFERENCE", "inference_events"),
         feedback_collection=os.environ.get("MONGODB_COLLECTION_FEEDBACK", "clinical_feedback"),
         rag_collection=os.environ.get("MONGODB_COLLECTION_RAG", "rag_chunks"),
+        auths_collection=os.environ.get("MONGODB_COLLECTION_AUTHS", "prior_auths"),
+        inbox_collection=os.environ.get("MONGODB_COLLECTION_INBOX", "inbox_messages"),
+        traces_collection=os.environ.get("MONGODB_COLLECTION_TRACES", "agent_traces"),
+        trials_collection=os.environ.get("MONGODB_COLLECTION_TRIALS", "clinical_trials"),
+        trial_candidates_collection=os.environ.get("MONGODB_COLLECTION_TRIAL_CANDIDATES", "trial_candidates"),
         enable=enable,
     )
 

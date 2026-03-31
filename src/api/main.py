@@ -128,6 +128,77 @@ class CaseSummary(BaseModel):
     feedback_timestamp: Optional[str] = None
 
 
+class PriorAuthCreate(BaseModel):
+    patient: Optional[str] = None
+    payer: Optional[str] = None
+    service_line: Optional[str] = None
+    status: str = "draft"  # draft|submitted|pending|approved|denied
+    sla_hours_remaining: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class InboxMessageCreate(BaseModel):
+    patient: Optional[str] = None
+    subject: str
+    message: str
+    message_type: str = "clinical"  # admin|clinical
+    risk: str = "low"  # low|medium|high
+    draft_reply: Optional[str] = None
+
+
+class AgentTraceCreate(BaseModel):
+    workflow: str
+    status: str = "success"  # success|error
+    risk: str = "low"  # low|medium|high
+    steps: Optional[list[dict]] = None
+    evidence: Optional[list[dict]] = None
+
+
+class DocsAskBody(BaseModel):
+    question: str
+
+
+class DocsCitation(BaseModel):
+    id: str
+    title: Optional[str] = None
+    source: Optional[str] = None
+    snippet: str
+    score: Optional[float] = None
+
+
+class DocsAnswerResponse(BaseModel):
+    answer: str
+    citations: list[DocsCitation]
+
+class Predict3DResponse(BaseModel):
+    label: str
+    confidence: float
+    probabilities: dict
+    model: str
+
+class TrialCreate(BaseModel):
+    name: str
+    sponsor: Optional[str] = None
+    condition: Optional[str] = None
+    nct_id: Optional[str] = None
+    sites: Optional[list[str]] = None
+    inclusion_tags: Optional[list[str]] = None
+    exclusion_tags: Optional[list[str]] = None
+    status: str = "active"  # active|paused|closed
+    notes: Optional[str] = None
+
+
+class TrialCandidateCreate(BaseModel):
+    trial_id: str
+    patient_label: Optional[str] = None  # avoid PHI; use a local label like "MRN hash" or "Case 102"
+    study_instance_uid: Optional[str] = None
+    site_id: Optional[str] = None
+    status: str = "screened"  # screened|eligible|ineligible|contacted|consented|enrolled|declined
+    reason: Optional[str] = None
+    evidence: Optional[list[dict]] = None
+    notes: Optional[str] = None
+
+
 # --- Helpers ---
 def _get_class_names():
     try:
@@ -275,6 +346,94 @@ def health():
     return {"status": "ok", "service": "brain-tumor-mri-api", "auth_required": bool(_load_api_keys())}
 
 
+@app.get("/models")
+def list_models():
+    """
+    List model names that are available on disk.
+    Uses MODEL_DIR (if set) or defaults to models/saved/.
+    """
+    try:
+        from src.inference.predict import list_available_models
+
+        return {"models": list_available_models(_ROOT)}
+    except Exception:
+        return {"models": []}
+
+
+@app.post("/docs/ask", response_model=DocsAnswerResponse)
+@limiter.limit("60/minute")
+async def docs_ask(
+    request: Request,
+    body: DocsAskBody,
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    """
+    Ask a question over the project's clinical/workflow documentation using RAG.
+    Returns an answer plus traceable citations (chunk ids + sources).
+    """
+    question = (body.question or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="question is required")
+
+    # Retrieve evidence from MongoDB Atlas Vector Search
+    citations: list[DocsCitation] = []
+    evidence_blocks: list[str] = []
+    try:
+        from src.rag.retrieval import retrieve_evidence
+
+        evidence = await retrieve_evidence(question, top_k=int(os.environ.get("RAG_TOP_K", "5")))
+        for i, e in enumerate(evidence, start=1):
+            text = (e.text or "").strip()
+            if len(text) > 900:
+                text = text[:900] + "…"
+            meta = e.metadata or {}
+            source = str(meta.get("source") or meta.get("path") or meta.get("doc_id") or "")
+            title = str(meta.get("title") or meta.get("heading") or meta.get("section") or "")
+            citations.append(
+                DocsCitation(
+                    id=str(e.chunk_id),
+                    title=title or None,
+                    source=source or None,
+                    snippet=text,
+                    score=e.score,
+                )
+            )
+            evidence_blocks.append(f"[{i}] (chunk_id: {e.chunk_id})\n{text}")
+    except Exception:
+        citations = []
+        evidence_blocks = []
+
+    # Generate a grounded answer if possible (LLM optional)
+    evidence_context = "\n\n".join(evidence_blocks).strip()
+    if not evidence_context:
+        return DocsAnswerResponse(
+            answer="No evidence was retrieved for this question yet. Please ingest your docs into the knowledge base and try again.",
+            citations=[],
+        )
+
+    try:
+        from src.llm.client import get_llm_client
+
+        prompt = (
+            "You are a clinical workflow assistant. Answer the user's question using ONLY the evidence provided. "
+            "Cite sources inline using bracket numbers like [1], [2]. If the evidence does not support a claim, say "
+            "'insufficient evidence from retrieved sources'. Keep the answer concise and operational.\n\n"
+            f"Question: {question}\n\n"
+            f"Evidence:\n{evidence_context}\n"
+        )
+        client = get_llm_client(provider="gemini")
+        resp = client.generate_content(prompt)
+        answer_text = (resp.text if resp else "") or ""
+        answer_text = answer_text.strip() or "Insufficient evidence from retrieved sources."
+    except Exception:
+        # Safe fallback: return an evidence-only response
+        answer_text = (
+            "Retrieved evidence is shown in citations. Configure an LLM key to generate a narrative answer."
+        )
+
+    return DocsAnswerResponse(answer=answer_text, citations=citations)
+
+
 @app.post("/predict", response_model=PredictResponse)
 @limiter.limit("120/minute")
 async def predict(
@@ -294,9 +453,11 @@ async def predict(
     - site_id: hospital or site code
     - shadow_mode: if true, append result to logs/shadow_results.jsonl (research / shadow deployment)
     """
-    allowed = {"custom_cnn", "xception", "transfer"}
+    from src.inference.predict import list_available_models
+
+    allowed = set(list_available_models(_ROOT)) or {"custom_cnn", "xception", "transfer"}
     if model not in allowed:
-        raise HTTPException(400, detail=f"model must be one of {allowed}")
+        raise HTTPException(400, detail=f"Unknown model '{model}'. Available: {sorted(allowed)}")
     bytes_data = await file.read()
     if not bytes_data:
         raise HTTPException(400, detail="Empty file")
@@ -327,6 +488,168 @@ async def predict(
         shadow_mode=shadow_mode,
     )
 
+
+@app.get("/models/3d")
+def list_models_3d():
+    try:
+        from src.inference.predict_3d import list_available_models_3d
+
+        return {"models": list_available_models_3d(_ROOT)}
+    except Exception:
+        return {"models": []}
+
+
+@app.post("/predict-3d", response_model=Predict3DResponse)
+@limiter.limit("30/minute")
+async def predict_3d(
+    request: Request,
+    file: UploadFile = File(...),
+    model: str = "cnn_3d_best",
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    """
+    Upload a NIfTI volume (.nii or .nii.gz) and run a 3D classifier.
+    """
+    filename = file.filename or "volume.nii.gz"
+    if not (filename.lower().endswith(".nii") or filename.lower().endswith(".nii.gz")):
+        raise HTTPException(status_code=400, detail="file must be a NIfTI volume (.nii or .nii.gz)")
+    bytes_data = await file.read()
+    if not bytes_data:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    from src.inference.predict_3d import list_available_models_3d, predict_volume_from_bytes
+
+    allowed = set(list_available_models_3d(_ROOT)) or {"cnn_3d_best", "cnn_3d_final"}
+    if model not in allowed:
+        raise HTTPException(400, detail=f"Unknown 3D model '{model}'. Available: {sorted(allowed)}")
+
+    classes = _get_class_names()
+    shape_raw = (os.environ.get("VOLUME_3D_SHAPE") or "96,96,96").strip()
+    try:
+        target_shape = tuple(int(x.strip()) for x in shape_raw.split(","))
+        if len(target_shape) != 3:
+            raise ValueError("bad shape")
+    except Exception:
+        target_shape = (96, 96, 96)
+
+    label, conf, probs = predict_volume_from_bytes(
+        model_name=model,
+        volume_bytes=bytes_data,
+        filename=filename,
+        class_names=classes,
+        target_shape=target_shape,
+        project_root=_ROOT,
+    )
+    if label is None:
+        raise HTTPException(status_code=503, detail="3D model not available or load failed")
+
+    return Predict3DResponse(label=label, confidence=float(conf), probabilities=probs, model=model)
+
+
+# ----------------------------
+# Clinical trials: minimal tracker APIs (no PHI)
+# ----------------------------
+
+
+@app.get("/trials")
+@limiter.limit("120/minute")
+async def list_trials_api(
+    request: Request,
+    limit: int = 50,
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.db.repositories import list_trials
+
+    docs = await list_trials(limit=limit)
+    out = []
+    for d in docs:
+        d = dict(d)
+        d["id"] = str(d.pop("_id", ""))
+        out.append(d)
+    return out
+
+
+@app.post("/trials")
+@limiter.limit("120/minute")
+async def create_trial_api(
+    request: Request,
+    body: TrialCreate,
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.db.repositories import insert_trial
+
+    inserted_id = await insert_trial(body.model_dump())
+    if not inserted_id:
+        raise HTTPException(status_code=503, detail="MongoDB not enabled")
+    return {"status": "ok", "id": inserted_id}
+
+
+@app.get("/trials/{trial_id}")
+@limiter.limit("120/minute")
+async def get_trial_api(
+    request: Request,
+    trial_id: str,
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.db.repositories import get_trial
+
+    d = await get_trial(trial_id)
+    if not d:
+        raise HTTPException(status_code=404, detail="Trial not found")
+    d = dict(d)
+    d["id"] = str(d.pop("_id", ""))
+    return d
+
+
+@app.get("/trial-candidates")
+@limiter.limit("120/minute")
+async def list_trial_candidates_api(
+    request: Request,
+    limit: int = 50,
+    trial_id: Optional[str] = None,
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.db.repositories import list_trial_candidates
+
+    docs = await list_trial_candidates(limit=limit, trial_id=trial_id)
+    out = []
+    for d in docs:
+        d = dict(d)
+        d["id"] = str(d.pop("_id", ""))
+        out.append(d)
+    return out
+
+
+@app.post("/trial-candidates")
+@limiter.limit("120/minute")
+async def create_trial_candidate_api(
+    request: Request,
+    body: TrialCandidateCreate,
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.db.repositories import insert_trial_candidate
+
+    inserted_id = await insert_trial_candidate(body.model_dump())
+    if not inserted_id:
+        raise HTTPException(status_code=503, detail="MongoDB not enabled")
+    return {"status": "ok", "id": inserted_id}
+
+
+@app.get("/trial-candidates/{candidate_id}")
+@limiter.limit("120/minute")
+async def get_trial_candidate_api(
+    request: Request,
+    candidate_id: str,
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.db.repositories import get_trial_candidate
+
+    d = await get_trial_candidate(candidate_id)
+    if not d:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    d = dict(d)
+    d["id"] = str(d.pop("_id", ""))
+    return d
 
 def _image_bytes_for_llm(bytes_data: bytes, filename: str, content_type: str) -> bytes:
     """Return image bytes suitable for LLM (PIL-compatible). For DICOM, convert slice to PNG bytes."""
@@ -578,3 +901,158 @@ async def metrics(
     from src.db.repositories import get_basic_metrics
 
     return await get_basic_metrics()
+
+
+# ----------------------------
+# Product workflow endpoints (Auths / Inbox / Traces)
+# ----------------------------
+
+
+@app.get("/auths")
+@limiter.limit("120/minute")
+async def list_auths(
+    request: Request,
+    limit: int = 50,
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.db.repositories import list_prior_auths
+
+    docs = await list_prior_auths(limit=limit)
+    out = []
+    for d in docs:
+        d = dict(d)
+        d["id"] = str(d.pop("_id", ""))
+        out.append(d)
+    return out
+
+
+@app.post("/auths")
+@limiter.limit("120/minute")
+async def create_auth(
+    request: Request,
+    body: PriorAuthCreate,
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.db.repositories import insert_prior_auth
+
+    inserted_id = await insert_prior_auth(body.model_dump())
+    if not inserted_id:
+        raise HTTPException(status_code=503, detail="MongoDB not enabled")
+    return {"status": "ok", "id": inserted_id}
+
+
+@app.get("/auths/{auth_id}")
+@limiter.limit("120/minute")
+async def get_auth(
+    request: Request,
+    auth_id: str,
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.db.repositories import get_prior_auth
+
+    d = await get_prior_auth(auth_id)
+    if not d:
+        raise HTTPException(status_code=404, detail="Auth not found")
+    d = dict(d)
+    d["id"] = str(d.pop("_id", ""))
+    return d
+
+
+@app.get("/inbox")
+@limiter.limit("120/minute")
+async def list_inbox(
+    request: Request,
+    limit: int = 50,
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.db.repositories import list_inbox_messages
+
+    docs = await list_inbox_messages(limit=limit)
+    out = []
+    for d in docs:
+        d = dict(d)
+        d["id"] = str(d.pop("_id", ""))
+        out.append(d)
+    return out
+
+
+@app.post("/inbox")
+@limiter.limit("120/minute")
+async def create_inbox(
+    request: Request,
+    body: InboxMessageCreate,
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.db.repositories import insert_inbox_message
+
+    inserted_id = await insert_inbox_message(body.model_dump())
+    if not inserted_id:
+        raise HTTPException(status_code=503, detail="MongoDB not enabled")
+    return {"status": "ok", "id": inserted_id}
+
+
+@app.get("/inbox/{message_id}")
+@limiter.limit("120/minute")
+async def get_inbox(
+    request: Request,
+    message_id: str,
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.db.repositories import get_inbox_message
+
+    d = await get_inbox_message(message_id)
+    if not d:
+        raise HTTPException(status_code=404, detail="Message not found")
+    d = dict(d)
+    d["id"] = str(d.pop("_id", ""))
+    return d
+
+
+@app.get("/agent-traces")
+@limiter.limit("120/minute")
+async def list_traces(
+    request: Request,
+    limit: int = 50,
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.db.repositories import list_agent_traces
+
+    docs = await list_agent_traces(limit=limit)
+    out = []
+    for d in docs:
+        d = dict(d)
+        d["id"] = str(d.pop("_id", ""))
+        out.append(d)
+    return out
+
+
+@app.post("/agent-traces")
+@limiter.limit("120/minute")
+async def create_trace(
+    request: Request,
+    body: AgentTraceCreate,
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.db.repositories import insert_agent_trace
+
+    inserted_id = await insert_agent_trace(body.model_dump())
+    if not inserted_id:
+        raise HTTPException(status_code=503, detail="MongoDB not enabled")
+    return {"status": "ok", "id": inserted_id}
+
+
+@app.get("/agent-traces/{trace_id}")
+@limiter.limit("120/minute")
+async def get_trace(
+    request: Request,
+    trace_id: str,
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.db.repositories import get_agent_trace
+
+    d = await get_agent_trace(trace_id)
+    if not d:
+        raise HTTPException(status_code=404, detail="Trace not found")
+    d = dict(d)
+    d["id"] = str(d.pop("_id", ""))
+    return d

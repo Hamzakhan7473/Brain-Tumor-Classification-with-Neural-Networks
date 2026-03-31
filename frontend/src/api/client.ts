@@ -39,6 +39,17 @@ export type MetricsResponse = {
   unclear?: number;
 };
 
+export type DocsAnswer = {
+  answer: string;
+  citations: Array<{
+    id: string;
+    title?: string;
+    source?: string;
+    snippet: string;
+    score?: number;
+  }>;
+};
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 const API_KEY = import.meta.env.VITE_API_KEY || "";
 
@@ -163,5 +174,37 @@ export async function getMetrics(): Promise<MetricsResponse> {
   const res = await fetch(url.toString(), { method: "GET", headers: buildAuthHeaders() });
   if (!res.ok) throw new Error(await readErrorMessage(res));
   return (await res.json()) as MetricsResponse;
+}
+
+export async function askDocs(question: string): Promise<DocsAnswer> {
+  const url = new URL("/docs/ask", API_BASE_URL);
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...buildAuthHeaders(),
+    },
+    body: JSON.stringify({ question }),
+  });
+
+  // If backend endpoint isn't available yet, return a graceful mocked response.
+  if (!res.ok) {
+    return {
+      answer:
+        "Docs assistant is not connected yet. Next step: add a `/docs/ask` endpoint that uses PageIndex (tree-search) or Mongo RAG.\n\nFor now, this is a UI-only workflow with traceable citations.",
+      citations: [
+        {
+          id: "local-placeholder-1",
+          title: "Clinical workflow (placeholder)",
+          source: "docs/clinical-workflow.md",
+          snippet:
+            "Phase B (Shadow Mode): run silently alongside clinicians, log results with study_instance_uid/site_id, and collect feedback for retrospective validation.",
+          score: 0.91,
+        },
+      ],
+    };
+  }
+
+  return (await res.json()) as DocsAnswer;
 }
 

@@ -1,11 +1,13 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
 
 export default function AppShell(props: { children: React.ReactNode }) {
+  const [moreOpen, setMoreOpen] = useState(false);
+
   return (
     <>
       <nav>
-        <Link to="/" className="nav-logo">
+        <Link to="/dashboard" className="nav-logo">
           <img src="/genie-transparent.png" alt="NeuroSight genie" className="nav-logo-img" />
           <span className="nav-logo-text">
             Neuro<span>Sight</span>
@@ -20,17 +22,42 @@ export default function AppShell(props: { children: React.ReactNode }) {
             <Link to="/upload">Upload</Link>
           </li>
           <li>
-            <Link to="/report">Report</Link>
+            <Link to="/inbox">Inbox</Link>
           </li>
           <li>
-            <Link to="/clinical-feedback">Feedback</Link>
+            <Link to="/auths">Auths</Link>
+          </li>
+          <li className="nav-more">
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setMoreOpen((v) => !v)}
+              aria-haspopup="true"
+              aria-expanded={moreOpen}
+            >
+              More
+            </button>
+            <div className="nav-more-menu" style={{ display: moreOpen ? "flex" : "none" }}>
+              <Link to="/docs-assistant" onClick={() => setMoreOpen(false)}>
+                Docs
+              </Link>
+              <Link to="/shadow-queue" onClick={() => setMoreOpen(false)}>
+                Pilot &amp; ops
+              </Link>
+              <Link to="/report" onClick={() => setMoreOpen(false)}>
+                Report
+              </Link>
+              <Link to="/clinical-feedback" onClick={() => setMoreOpen(false)}>
+                Feedback
+              </Link>
+              <Link to="/agents-traces" onClick={() => setMoreOpen(false)}>
+                Traces
+              </Link>
+            </div>
           </li>
         </ul>
 
         <div className="nav-actions">
-          <a className="btn-ghost" href="/docs" onClick={(e) => e.preventDefault()}>
-            Docs
-          </a>
           <Link to="/upload" className="btn-primary">
             New scan
           </Link>

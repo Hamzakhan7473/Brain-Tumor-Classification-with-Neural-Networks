@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { generateReport, ReportResponse } from "../api/client";
+import EvidenceDrawer, { EvidenceCitation } from "../components/EvidenceDrawer";
 
 type StoredPrediction = {
   scanBase64: string;
@@ -36,6 +38,8 @@ export default function GenerateReport() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [report, setReport] = useState<ReportResponse | null>(null);
+  const [savedTimestamp, setSavedTimestamp] = useState<string>("");
+  const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
 
   useEffect(() => {
     const raw = sessionStorage.getItem("lastPrediction");
@@ -52,6 +56,7 @@ export default function GenerateReport() {
     setLoading(true);
     setError("");
     setReport(null);
+    setSavedTimestamp("");
     try {
       const file = await dataUrlToFile(stored.scanBase64, stored.filename);
       const r = await generateReport({
@@ -62,12 +67,37 @@ export default function GenerateReport() {
         shadow_mode: stored.shadow_mode,
       });
       setReport(r);
+      const ts = new Date().toISOString();
+      sessionStorage.setItem(
+        "lastReport",
+        JSON.stringify({ study_instance_uid: stored.study_instance_uid, report_text: r.report_text, timestamp: ts })
+      );
+      setSavedTimestamp(ts);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
   }
+
+  const reportCitations: EvidenceCitation[] = [
+    {
+      id: "rag-clinical-1",
+      title: "MRI report template snippet",
+      source: "local-templates / brain-mri",
+      snippet:
+        "Standardized template for brain MRI reports including sections for indication, technique, findings, and impression. The AI draft should follow this structure.",
+      score: 0.9,
+    },
+    {
+      id: "rag-guideline-1",
+      title: "Glioma imaging guideline",
+      source: "guidelines / glioma-imaging",
+      snippet:
+        "In suspected glioma, MRI with and without contrast is recommended to evaluate tumor extent, edema, and mass effect. Reporting should describe size, location, and involvement of eloquent cortex.",
+      score: 0.87,
+    },
+  ];
 
   return (
     <div className="container">
@@ -86,12 +116,22 @@ export default function GenerateReport() {
               <div><b>Site ID:</b> {stored.site_id || "—"}</div>
               <div><b>Model:</b> {stored.model}</div>
             </div>
+            <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <Link to={`/reading/${encodeURIComponent(stored.study_instance_uid)}`} className="btn btnOutline">
+                Open reading mode
+              </Link>
+            </div>
             <div style={{ marginTop: 18 }}>
               <button className="btnPrimary" disabled={loading} onClick={onGenerate} style={{ width: "100%", padding: "12px 18px" }}>
                 {loading ? "Generating..." : "Generate report (LLM)"}
               </button>
             </div>
             {error ? <div style={{ marginTop: 12, color: "crimson", fontWeight: 600 }}>{error}</div> : null}
+            {savedTimestamp ? (
+              <div style={{ marginTop: 10, color: "var(--muted)", fontSize: 12 }}>
+                Saved to reading mode: {new Date(savedTimestamp).toLocaleString()}
+              </div>
+            ) : null}
           </div>
 
           <div className="card">
@@ -100,6 +140,14 @@ export default function GenerateReport() {
               {report
                 ? "Review the grounded report text below. In a clinical deployment this would be signed off inside the RIS/PACS."
                 : "Click generate to draft a grounded report via the backend."}
+            </div>
+            <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn" type="button" onClick={() => setDrawerOpen(true)}>
+                View evidence
+              </button>
+              <Link to={`/reading/${encodeURIComponent(stored.study_instance_uid)}`} className="btn btnOutline">
+                Open reading mode
+              </Link>
             </div>
             {report ? (
               <pre
@@ -120,6 +168,8 @@ export default function GenerateReport() {
           </div>
         </div>
       )}
+
+      <EvidenceDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} title="Report evidence" citations={reportCitations} />
     </div>
   );
 }

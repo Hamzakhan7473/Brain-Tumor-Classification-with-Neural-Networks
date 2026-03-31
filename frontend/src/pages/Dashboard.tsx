@@ -71,7 +71,7 @@ export default function Dashboard() {
     <div className="container" style={{ paddingTop: 88 }}>
       <h2 style={{ marginBottom: 4 }}>Dashboard</h2>
       <p style={{ color: "var(--ink-mute)", marginBottom: 16 }}>
-        Recent cases and feedback status (MongoDB-backed when configured).
+        Recent cases and feedback status across your imaging AI workflows.
       </p>
 
       <div style={{ display: "flex", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>

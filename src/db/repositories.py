@@ -129,6 +129,210 @@ async def get_basic_metrics() -> Dict[str, Any]:
     }
 
 
+# ----------------------------
+# Product workflows (Auths / Inbox / Traces)
+# ----------------------------
+
+
+async def insert_prior_auth(payload: Dict[str, Any]) -> str | None:
+    """
+    Insert a prior authorization work item.
+    Returns inserted id as string when enabled, otherwise None.
+    """
+    db = get_motor_database()
+    settings = load_mongo_settings()
+    if db is None or not settings.enable:
+        return None
+    payload = dict(payload)
+    payload.setdefault("timestamp", _utc_now_iso())
+    coll = db[settings.auths_collection]
+    res = await coll.insert_one(payload)
+    return str(res.inserted_id)
+
+
+async def list_prior_auths(limit: int = 50) -> List[Dict[str, Any]]:
+    db = get_motor_database()
+    settings = load_mongo_settings()
+    if db is None or not settings.enable:
+        return []
+    coll = db[settings.auths_collection]
+    cursor = coll.find({}, sort=[("timestamp", -1)], limit=int(limit))
+    return [doc async for doc in cursor]
+
+
+async def get_prior_auth(auth_id: str) -> Optional[Dict[str, Any]]:
+    db = get_motor_database()
+    settings = load_mongo_settings()
+    if db is None or not settings.enable:
+        return None
+    try:
+        from bson import ObjectId
+
+        oid = ObjectId(auth_id)
+    except Exception:
+        return None
+    coll = db[settings.auths_collection]
+    return await coll.find_one({"_id": oid})
+
+
+async def insert_inbox_message(payload: Dict[str, Any]) -> str | None:
+    db = get_motor_database()
+    settings = load_mongo_settings()
+    if db is None or not settings.enable:
+        return None
+    payload = dict(payload)
+    payload.setdefault("timestamp", _utc_now_iso())
+    coll = db[settings.inbox_collection]
+    res = await coll.insert_one(payload)
+    return str(res.inserted_id)
+
+
+async def list_inbox_messages(limit: int = 50) -> List[Dict[str, Any]]:
+    db = get_motor_database()
+    settings = load_mongo_settings()
+    if db is None or not settings.enable:
+        return []
+    coll = db[settings.inbox_collection]
+    cursor = coll.find({}, sort=[("timestamp", -1)], limit=int(limit))
+    return [doc async for doc in cursor]
+
+
+async def get_inbox_message(message_id: str) -> Optional[Dict[str, Any]]:
+    db = get_motor_database()
+    settings = load_mongo_settings()
+    if db is None or not settings.enable:
+        return None
+    try:
+        from bson import ObjectId
+
+        oid = ObjectId(message_id)
+    except Exception:
+        return None
+    coll = db[settings.inbox_collection]
+    return await coll.find_one({"_id": oid})
+
+
+async def insert_agent_trace(payload: Dict[str, Any]) -> str | None:
+    db = get_motor_database()
+    settings = load_mongo_settings()
+    if db is None or not settings.enable:
+        return None
+    payload = dict(payload)
+    payload.setdefault("timestamp", _utc_now_iso())
+    coll = db[settings.traces_collection]
+    res = await coll.insert_one(payload)
+    return str(res.inserted_id)
+
+
+async def list_agent_traces(limit: int = 50) -> List[Dict[str, Any]]:
+    db = get_motor_database()
+    settings = load_mongo_settings()
+    if db is None or not settings.enable:
+        return []
+    coll = db[settings.traces_collection]
+    cursor = coll.find({}, sort=[("timestamp", -1)], limit=int(limit))
+    return [doc async for doc in cursor]
+
+
+async def get_agent_trace(trace_id: str) -> Optional[Dict[str, Any]]:
+    db = get_motor_database()
+    settings = load_mongo_settings()
+    if db is None or not settings.enable:
+        return None
+    try:
+        from bson import ObjectId
+
+        oid = ObjectId(trace_id)
+    except Exception:
+        return None
+    coll = db[settings.traces_collection]
+    return await coll.find_one({"_id": oid})
+
+
+# ----------------------------
+# Clinical trials (trial + candidate tracker)
+# ----------------------------
+
+
+async def insert_trial(payload: Dict[str, Any]) -> str | None:
+    db = get_motor_database()
+    settings = load_mongo_settings()
+    if db is None or not settings.enable:
+        return None
+    payload = dict(payload)
+    payload.setdefault("timestamp", _utc_now_iso())
+    payload.setdefault("status", "active")  # active|paused|closed
+    coll = db[settings.trials_collection]
+    res = await coll.insert_one(payload)
+    return str(res.inserted_id)
+
+
+async def list_trials(limit: int = 50) -> List[Dict[str, Any]]:
+    db = get_motor_database()
+    settings = load_mongo_settings()
+    if db is None or not settings.enable:
+        return []
+    coll = db[settings.trials_collection]
+    cursor = coll.find({}, sort=[("timestamp", -1)], limit=int(limit))
+    return [doc async for doc in cursor]
+
+
+async def get_trial(trial_id: str) -> Optional[Dict[str, Any]]:
+    db = get_motor_database()
+    settings = load_mongo_settings()
+    if db is None or not settings.enable:
+        return None
+    try:
+        from bson import ObjectId
+
+        oid = ObjectId(trial_id)
+    except Exception:
+        return None
+    coll = db[settings.trials_collection]
+    return await coll.find_one({"_id": oid})
+
+
+async def insert_trial_candidate(payload: Dict[str, Any]) -> str | None:
+    db = get_motor_database()
+    settings = load_mongo_settings()
+    if db is None or not settings.enable:
+        return None
+    payload = dict(payload)
+    payload.setdefault("timestamp", _utc_now_iso())
+    payload.setdefault("status", "screened")  # screened|eligible|ineligible|contacted|consented|enrolled|declined
+    coll = db[settings.trial_candidates_collection]
+    res = await coll.insert_one(payload)
+    return str(res.inserted_id)
+
+
+async def list_trial_candidates(limit: int = 50, trial_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    db = get_motor_database()
+    settings = load_mongo_settings()
+    if db is None or not settings.enable:
+        return []
+    coll = db[settings.trial_candidates_collection]
+    q: Dict[str, Any] = {}
+    if trial_id:
+        q["trial_id"] = trial_id
+    cursor = coll.find(q, sort=[("timestamp", -1)], limit=int(limit))
+    return [doc async for doc in cursor]
+
+
+async def get_trial_candidate(candidate_id: str) -> Optional[Dict[str, Any]]:
+    db = get_motor_database()
+    settings = load_mongo_settings()
+    if db is None or not settings.enable:
+        return None
+    try:
+        from bson import ObjectId
+
+        oid = ObjectId(candidate_id)
+    except Exception:
+        return None
+    coll = db[settings.trial_candidates_collection]
+    return await coll.find_one({"_id": oid})
+
+
 async def search_rag_chunks(query_embedding: List[float], top_k: int = 5) -> List[Dict[str, Any]]:
     """
     Placeholder for MongoDB Atlas Vector Search retrieval.
