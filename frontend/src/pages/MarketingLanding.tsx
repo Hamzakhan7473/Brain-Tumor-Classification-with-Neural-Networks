@@ -1,7 +1,56 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { fetchPublicFeatures, type PublicFeature } from "../api/client";
+
+const FALLBACK_FEATURES: PublicFeature[] = [
+  {
+    id: "shadow-mode",
+    title: "Shadow-mode ready",
+    description:
+      "Every prediction can be run in shadow mode with study UID and site ID, so you can audit performance before AI impacts clinical decisions.",
+    available: true,
+  },
+  {
+    id: "clinical-feedback",
+    title: "Feedback at the point of read",
+    description:
+      "Simple agree / correct / unclear flow with optional corrected class and reasons, wired into dashboards and safety views.",
+    available: true,
+  },
+  {
+    id: "report-drafts",
+    title: "Report drafts with evidence",
+    description:
+      "Drafts are designed to sit next to your structured templates, with an evidence drawer to show what the model was grounded on.",
+    available: true,
+  },
+  {
+    id: "agent-traces",
+    title: "Agent traces",
+    description:
+      "A dedicated view for seeing how AI assistants worked together on a case – evidence retrieved, policies checked, and decisions proposed.",
+    available: true,
+  },
+];
 
 export default function MarketingLanding() {
+  const [featureItems, setFeatureItems] = useState<PublicFeature[]>(FALLBACK_FEATURES);
+  const [featuresLoaded, setFeaturesLoaded] = useState(false);
+  const [apiVersion, setApiVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const data = await fetchPublicFeatures();
+      if (cancelled || !data?.features?.length) return;
+      setFeatureItems(data.features);
+      setApiVersion(data.version);
+      setFeaturesLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   return (
     <>
       <nav>
@@ -124,36 +173,34 @@ export default function MarketingLanding() {
         </section>
 
         <section id="features" className="container" style={{ paddingTop: 32 }}>
-          <h3 style={{ marginBottom: 10 }}>Built for real radiology teams</h3>
-          <div className="grid2">
-            <div className="card">
-              <div style={{ fontWeight: 800, marginBottom: 4 }}>Shadow-mode ready</div>
-              <p style={{ fontSize: 14, color: "var(--ink-mute)" }}>
-                Every prediction can be run in shadow mode with study UID and site ID, so you can audit performance
-                before AI impacts clinical decisions.
-              </p>
-            </div>
-            <div className="card">
-              <div style={{ fontWeight: 800, marginBottom: 4 }}>Feedback at the point of read</div>
-              <p style={{ fontSize: 14, color: "var(--ink-mute)" }}>
-                Simple agree / correct / unclear flow with optional corrected class and reasons, wired into dashboards
-                and safety views.
-              </p>
-            </div>
-            <div className="card">
-              <div style={{ fontWeight: 800, marginBottom: 4 }}>Report drafts with evidence</div>
-              <p style={{ fontSize: 14, color: "var(--ink-mute)" }}>
-                Drafts are designed to sit next to your structured templates, with an evidence drawer to show what the
-                model was grounded on.
-              </p>
-            </div>
-            <div className="card">
-              <div style={{ fontWeight: 800, marginBottom: 4 }}>Agent traces</div>
-              <p style={{ fontSize: 14, color: "var(--ink-mute)" }}>
-                A dedicated view for seeing how AI assistants worked together on a case – evidence retrieved, policies
-                checked, and decisions proposed.
-              </p>
-            </div>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <h3 style={{ marginBottom: 0 }}>Built for real radiology teams</h3>
+            {featuresLoaded && apiVersion ? (
+              <span style={{ fontSize: 12, color: "var(--ink-mute)" }}>API v{apiVersion}</span>
+            ) : null}
+          </div>
+          <div className="grid2" style={{ marginTop: 10 }}>
+            {featureItems.map((f) => (
+              <div key={f.id} className="card">
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 4 }}>{f.title}</div>
+                  <span
+                    title={f.available ? "Enabled on this API deployment" : "Requires configuration on the server"}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.06,
+                      color: f.available ? "var(--accent, #0d9488)" : "var(--ink-mute)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {f.available ? "Live" : "Setup"}
+                  </span>
+                </div>
+                <p style={{ fontSize: 14, color: "var(--ink-mute)", marginBottom: 0 }}>{f.description}</p>
+              </div>
+            ))}
           </div>
         </section>
 

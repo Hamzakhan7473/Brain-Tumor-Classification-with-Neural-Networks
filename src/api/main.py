@@ -32,6 +32,8 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from src.api.features import FeaturesResponse, build_features_response
+
 app = FastAPI(
     title="Brain Tumor MRI API",
     description="Classification and optional report draft for brain MRI (2D slice). Supports JPG/PNG and DICOM. "
@@ -344,6 +346,16 @@ def _maybe_shadow_store(
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "brain-tumor-mri-api", "auth_required": bool(_load_api_keys())}
+
+
+@app.get("/features", response_model=FeaturesResponse)
+@limiter.limit("120/minute")
+def public_features(request: Request):
+    """
+    Product feature list for marketing UI, merged with live capabilities (models on disk, MongoDB, LLM).
+    No API key required so public landing pages can show accurate availability.
+    """
+    return build_features_response()
 
 
 @app.get("/models")

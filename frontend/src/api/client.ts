@@ -208,3 +208,39 @@ export async function askDocs(question: string): Promise<DocsAnswer> {
   return (await res.json()) as DocsAnswer;
 }
 
+export type PublicFeature = {
+  id: string;
+  title: string;
+  description: string;
+  available: boolean;
+};
+
+export type PublicCapabilities = {
+  models_2d: string[];
+  models_3d: string[];
+  mongo_configured: boolean;
+  llm_configured: boolean;
+  auth_required_globally: boolean;
+};
+
+export type FeaturesCatalogResponse = {
+  service: string;
+  version: string;
+  features: PublicFeature[];
+  capabilities: PublicCapabilities;
+};
+
+/**
+ * Public catalog from GET /features (no API key). Returns null if the backend is unreachable.
+ */
+export async function fetchPublicFeatures(): Promise<FeaturesCatalogResponse | null> {
+  const url = new URL("/features", API_BASE_URL);
+  try {
+    const res = await fetch(url.toString(), { method: "GET" });
+    if (!res.ok) return null;
+    return (await res.json()) as FeaturesCatalogResponse;
+  } catch {
+    return null;
+  }
+}
+
