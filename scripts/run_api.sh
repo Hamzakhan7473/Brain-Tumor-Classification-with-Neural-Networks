@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Run the Brain Tumor MRI REST API (from project root).
 # Usage: ./scripts/run_api.sh [port]
+# For API + React UI together: ./scripts/demo_local.sh (or npm run demo from frontend/)
 # Requires: pip install -r requirements.txt
 set -e
 cd "$(dirname "$0")/.."

@@ -44,8 +44,13 @@ app = FastAPI(
 # CORS for browser-based frontend
 allowed_origins = [o.strip() for o in (os.environ.get("CORS_ALLOW_ORIGINS") or "").split(",") if o.strip()]
 if not allowed_origins:
-    # Dev-friendly default for local Vite/React
-    allowed_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    # Dev-friendly default for local Vite/React and `vite preview`
+    allowed_origins = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ]
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { submitClinicalFeedback } from "../api/client";
+import { formatApiConnectionHint, submitClinicalFeedback } from "../api/client";
 
 type StoredPrediction = {
   scanBase64: string;
@@ -74,7 +74,8 @@ export default function ClinicalFeedback() {
       setSuccess(`Saved: ${res.status || "ok"}`);
       sessionStorage.setItem("lastFeedbackStatus", feedback);
     } catch (ex) {
-      setError(ex instanceof Error ? ex.message : String(ex));
+      const raw = ex instanceof Error ? ex.message : String(ex);
+      setError(formatApiConnectionHint(raw));
     } finally {
       setLoading(false);
     }
@@ -229,7 +230,9 @@ export default function ClinicalFeedback() {
                 </button>
               </div>
 
-              {error ? <div style={{ marginTop: 12, color: "crimson", fontWeight: 600 }}>{error}</div> : null}
+              {error ? (
+                <div style={{ marginTop: 12, color: "crimson", fontWeight: 600, whiteSpace: "pre-wrap" }}>{error}</div>
+              ) : null}
               {success ? <div style={{ marginTop: 12, color: "#166534", fontWeight: 700 }}>{success}</div> : null}
             </form>
           </div>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchPublicFeatures, type PublicFeature } from "../api/client";
+import { checkApiHealth, fetchPublicFeatures, type PublicFeature } from "../api/client";
 
 const FALLBACK_FEATURES: PublicFeature[] = [
   {
@@ -37,6 +37,7 @@ export default function MarketingLanding() {
   const [featureItems, setFeatureItems] = useState<PublicFeature[]>(FALLBACK_FEATURES);
   const [featuresLoaded, setFeaturesLoaded] = useState(false);
   const [apiVersion, setApiVersion] = useState<string | null>(null);
+  const [apiReachable, setApiReachable] = useState<boolean | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,8 +52,36 @@ export default function MarketingLanding() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const h = await checkApiHealth();
+      if (!cancelled) setApiReachable(h.ok);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <>
+      {import.meta.env.DEV && apiReachable === false ? (
+        <div
+          role="status"
+          style={{
+            background: "rgba(251, 191, 36, 0.22)",
+            borderBottom: "1px solid rgba(245, 158, 11, 0.4)",
+            padding: "8px 16px",
+            fontSize: 12,
+            textAlign: "center",
+            color: "var(--ink)",
+          }}
+        >
+          Demo tip: start the API so Upload and Features stay in sync —{" "}
+          <code style={{ background: "rgba(0,0,0,0.06)", padding: "1px 6px", borderRadius: 4 }}>./scripts/demo_local.sh</code>
+        </div>
+      ) : null}
       <nav>
         <Link to="/" className="nav-logo">
           <img src="/genie-transparent.png" alt="NeuroSight genie" className="nav-logo-img" />
@@ -75,6 +104,9 @@ export default function MarketingLanding() {
           </li>
         </ul>
         <div className="nav-actions">
+          <Link to="/upload" className="btn-ghost">
+            Live demo
+          </Link>
           <Link to="/login" className="btn-ghost">
             Log in
           </Link>

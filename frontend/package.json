@@ -5,6 +5,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "demo": "bash ../scripts/demo_local.sh",
     "lint": "echo \"(optional)\""
   },
   "private": true,
