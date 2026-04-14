@@ -1,0 +1,25 @@
+# 3D U-Net segmentation (BraTS-style; Kaggle rastislav notebook family)
+# python scripts/train_3d_unet.py --config configs/model_3d_unet.yaml --data-config configs/data_3d_seg.yaml
+
+model:
+  name: unet_3d
+  # (D, H, W, C) — four MRI modalities as channels
+  input_shape: [96, 96, 96, 4]
+  num_classes: 4   # background + 3 BraTS tumor subregions (after remap)
+  base_filters: 32
+  depth: 4
+
+training:
+  epochs: 100
+  batch_size: 1    # 3D U-Net is VRAM-heavy; increase if GPU allows
+  learning_rate: 0.0001
+  dice_weight: 0.5
+  lr_factor: 0.5
+  lr_patience: 5
+  early_stopping_patience: 20
+  early_stopping_monitor: val_loss
+
+paths:
+  checkpoint_dir: models/checkpoints/unet_3d
+  save_best: models/saved/unet_3d_best.keras
+  save_final: models/saved/unet_3d_final.keras

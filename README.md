@@ -207,6 +207,8 @@ brain_tumor_Cnn/
    ```
    Then open `http://localhost:8000/docs` for Swagger UI. Endpoints: `POST /predict` (image or DICOM → label + probabilities), `POST /report` (+ LLM draft). Or run with Docker: `docker build -t brain-tumor-mri-api . && docker run -p 8000:8000 brain-tumor-mri-api`.
 
+7. **Live demo (React UI + API on one machine):** from the project root run `./scripts/demo_local.sh` (starts FastAPI on port 8000 and Vite on 5173 with an `/api` proxy so the browser avoids CORS issues). Alternatively, from `frontend/`: `npm run demo`. Ensure trained weights exist under `models/saved/` for the model you select. If the API uses `API_KEY`, set `VITE_API_KEY` in `frontend/.env` to the same value (see `frontend/.env.example`).
+
 ### Troubleshooting
 
 - **`ImportError: cannot import name 'runtime_version' from 'google.protobuf'`** — TensorFlow does **not** work with protobuf 4.x. Use protobuf 5.x or 3.20.x and reinstall TensorFlow:

@@ -50,12 +50,78 @@ export type DocsAnswer = {
   }>;
 };
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
-const API_KEY = import.meta.env.VITE_API_KEY || "";
+const API_KEY = (import.meta.env.VITE_API_KEY || "").trim();
+
+/**
+ * Base URL for the FastAPI backend.
+ * - Dev default: `/api` (Vite proxies to http://127.0.0.1:8000).
+ * - Production: set `VITE_API_BASE_URL` (e.g. `https://api.example.com` or `/api` behind nginx).
+ */
+export function getApiRoot(): string {
+  const env = (import.meta.env.VITE_API_BASE_URL ?? "").trim();
+  if (env) return env.replace(/\/$/, "");
+  if (import.meta.env.DEV) return "/api";
+  return "http://localhost:8000";
+}
+
+function apiUrl(path: string): string {
+  const root = getApiRoot();
+  const p = path.startsWith("/") ? path : `/${path}`;
+  if (root.startsWith("http://") || root.startsWith("https://")) {
+    return `${root}${p}`;
+  }
+  return `${root}${p}`;
+}
+
+/** Parseable URL for query params (handles relative `/api/...` in the browser). */
+function apiURL(path: string): URL {
+  const s = apiUrl(path);
+  if (s.startsWith("http://") || s.startsWith("https://")) {
+    return new URL(s);
+  }
+  const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+  return new URL(s, origin);
+}
+
+export function isFrontendApiKeyConfigured(): boolean {
+  return Boolean(API_KEY);
+}
 
 function buildAuthHeaders(): Record<string, string> {
   if (!API_KEY) return {};
   return { "X-API-Key": API_KEY };
+}
+
+export type ApiHealthResult =
+  | { ok: true; auth_required: boolean }
+  | { ok: false; reason: string };
+
+export async function checkApiHealth(): Promise<ApiHealthResult> {
+  try {
+    const res = await fetch(apiUrl("/health"), { method: "GET" });
+    if (!res.ok) {
+      return { ok: false, reason: `HTTP ${res.status}` };
+    }
+    const data = (await res.json()) as { auth_required?: boolean };
+    return { ok: true, auth_required: Boolean(data.auth_required) };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Network error";
+    return { ok: false, reason: msg };
+  }
+}
+
+/** User-facing hint when predict/report fail due to connectivity or auth mismatch. */
+export function formatApiConnectionHint(baseMessage: string): string {
+  if (/fetch|network|failed to fetch|load failed|networkerror/i.test(baseMessage)) {
+    return `${baseMessage}\n\nStart the API from the project root: ./scripts/run_api.sh\nOr run API + UI together: ./scripts/demo_local.sh`;
+  }
+  if (/401|invalid or missing api key|api key/i.test(baseMessage)) {
+    return `${baseMessage}\n\nSet VITE_API_KEY in frontend/.env to the same value as backend API_KEY, then restart npm run dev.`;
+  }
+  if (/503|model not available|load failed/i.test(baseMessage)) {
+    return `${baseMessage}\n\nPlace trained weights in models/saved/ for the selected model name, or run training scripts from the README.`;
+  }
+  return baseMessage;
 }
 
 async function readErrorMessage(res: Response): Promise<string> {
@@ -74,7 +140,7 @@ export async function predictScan(input: {
   site_id?: string;
   shadow_mode: boolean;
 }): Promise<PredictResponse> {
-  const url = new URL("/predict", API_BASE_URL);
+  const url = apiURL("/predict");
   url.searchParams.set("model", input.model);
 
   const fd = new FormData();
@@ -100,7 +166,7 @@ export async function generateReport(input: {
   site_id?: string;
   shadow_mode: boolean;
 }): Promise<ReportResponse> {
-  const url = new URL("/report", API_BASE_URL);
+  const url = apiURL("/report");
   url.searchParams.set("model", input.model);
 
   const fd = new FormData();
@@ -127,9 +193,9 @@ export async function submitClinicalFeedback(input: {
   notes?: string | null;
   model?: string | null;
 }): Promise<{ status: string; received?: boolean }> {
-  const url = new URL("/clinical/feedback", API_BASE_URL);
+  const url = apiUrl("/clinical/feedback");
 
-  const res = await fetch(url.toString(), {
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -150,7 +216,7 @@ export async function submitClinicalFeedback(input: {
 }
 
 export async function listCases(input?: { limit?: number; site_id?: string }): Promise<CaseSummary[]> {
-  const url = new URL("/cases", API_BASE_URL);
+  const url = apiURL("/cases");
   if (input?.limit) url.searchParams.set("limit", String(input.limit));
   if (input?.site_id) url.searchParams.set("site_id", input.site_id);
 
@@ -163,22 +229,22 @@ export async function listCases(input?: { limit?: number; site_id?: string }): P
 }
 
 export async function getCase(study_instance_uid: string): Promise<any> {
-  const url = new URL(`/cases/${encodeURIComponent(study_instance_uid)}`, API_BASE_URL);
-  const res = await fetch(url.toString(), { method: "GET", headers: buildAuthHeaders() });
+  const url = apiUrl(`/cases/${encodeURIComponent(study_instance_uid)}`);
+  const res = await fetch(url, { method: "GET", headers: buildAuthHeaders() });
   if (!res.ok) throw new Error(await readErrorMessage(res));
   return await res.json();
 }
 
 export async function getMetrics(): Promise<MetricsResponse> {
-  const url = new URL("/metrics", API_BASE_URL);
-  const res = await fetch(url.toString(), { method: "GET", headers: buildAuthHeaders() });
+  const url = apiUrl("/metrics");
+  const res = await fetch(url, { method: "GET", headers: buildAuthHeaders() });
   if (!res.ok) throw new Error(await readErrorMessage(res));
   return (await res.json()) as MetricsResponse;
 }
 
 export async function askDocs(question: string): Promise<DocsAnswer> {
-  const url = new URL("/docs/ask", API_BASE_URL);
-  const res = await fetch(url.toString(), {
+  const url = apiUrl("/docs/ask");
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -234,9 +300,9 @@ export type FeaturesCatalogResponse = {
  * Public catalog from GET /features (no API key). Returns null if the backend is unreachable.
  */
 export async function fetchPublicFeatures(): Promise<FeaturesCatalogResponse | null> {
-  const url = new URL("/features", API_BASE_URL);
+  const url = apiUrl("/features");
   try {
-    const res = await fetch(url.toString(), { method: "GET" });
+    const res = await fetch(url, { method: "GET" });
     if (!res.ok) return null;
     return (await res.json()) as FeaturesCatalogResponse;
   } catch {

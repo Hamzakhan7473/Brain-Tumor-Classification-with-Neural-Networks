@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { generateReport, ReportResponse } from "../api/client";
+import { formatApiConnectionHint, generateReport, ReportResponse } from "../api/client";
 import EvidenceDrawer, { EvidenceCitation } from "../components/EvidenceDrawer";
 
 type StoredPrediction = {
@@ -74,7 +74,8 @@ export default function GenerateReport() {
       );
       setSavedTimestamp(ts);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const raw = e instanceof Error ? e.message : String(e);
+      setError(formatApiConnectionHint(raw));
     } finally {
       setLoading(false);
     }
@@ -126,7 +127,9 @@ export default function GenerateReport() {
                 {loading ? "Generating..." : "Generate report (LLM)"}
               </button>
             </div>
-            {error ? <div style={{ marginTop: 12, color: "crimson", fontWeight: 600 }}>{error}</div> : null}
+            {error ? (
+              <div style={{ marginTop: 12, color: "crimson", fontWeight: 600, whiteSpace: "pre-wrap" }}>{error}</div>
+            ) : null}
             {savedTimestamp ? (
               <div style={{ marginTop: 10, color: "var(--muted)", fontSize: 12 }}>
                 Saved to reading mode: {new Date(savedTimestamp).toLocaleString()}

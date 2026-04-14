@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { CaseSummary, getMetrics, listCases, MetricsResponse } from "../api/client";
+import { CaseSummary, formatApiConnectionHint, getMetrics, listCases, MetricsResponse } from "../api/client";
 
 type StoredPrediction = {
   scanBase64: string;
@@ -49,7 +49,8 @@ export default function Dashboard() {
         setMetrics(m);
       } catch (e) {
         if (!mounted) return;
-        setError(e instanceof Error ? e.message : String(e));
+        const raw = e instanceof Error ? e.message : String(e);
+        setError(formatApiConnectionHint(raw));
       } finally {
         if (mounted) setLoading(false);
       }
@@ -109,7 +110,7 @@ export default function Dashboard() {
             New scan
           </Link>
         </div>
-        {error ? <p style={{ color: "crimson", marginTop: 10 }}>{error}</p> : null}
+        {error ? <p style={{ color: "crimson", marginTop: 10, whiteSpace: "pre-wrap" }}>{error}</p> : null}
         {loading ? (
           <p style={{ color: "var(--ink-mute)", marginTop: 10 }}>Loading cases…</p>
         ) : (

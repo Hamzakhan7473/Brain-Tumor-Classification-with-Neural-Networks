@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { predictScan, PredictResponse } from "../api/client";
+import { formatApiConnectionHint, predictScan, PredictResponse } from "../api/client";
 
 type StoredPrediction = {
   scanBase64: string;
@@ -168,7 +168,9 @@ export default function UploadPredict() {
             {loading ? "Running..." : "Run inference"}
           </button>
 
-          {error ? <div style={{ marginTop: 12, color: "crimson", fontWeight: 600 }}>{error}</div> : null}
+          {error ? (
+            <div style={{ marginTop: 12, color: "crimson", fontWeight: 600, whiteSpace: "pre-wrap" }}>{error}</div>
+          ) : null}
         </div>
 
         <div className="card">

@@ -9,10 +9,21 @@ export default function Login() {
     <div className="container" style={{ maxWidth: 720 }}>
       <h2 style={{ marginTop: 16 }}>Log in</h2>
       <p style={{ color: "var(--ink-mute)", marginTop: 4 }}>
-        Access your NeuroSight dashboard.
+        For live demos, sign-in is optional — use the button below to enter the app immediately.
       </p>
 
       <div className="card" style={{ marginTop: 14 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
+          <Link to="/upload" className="btn-primary">
+            Try demo — upload a scan
+          </Link>
+          <Link to="/dashboard" className="btn btnOutline">
+            Open dashboard
+          </Link>
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-mute)", marginBottom: 8 }}>
+          Optional (placeholder) credentials
+        </div>
         <div style={{ display: "grid", gap: 10 }}>
           <label>
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Email</div>
@@ -35,11 +46,11 @@ export default function Login() {
         </div>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
-          <Link to="/dashboard" className="btn-primary">
-            Log in
+          <Link to="/dashboard" className="btn">
+            Log in (same as open dashboard)
           </Link>
           <Link to="/signup" className="btn btnOutline">
-            Create account
+            Sign up form
           </Link>
           <Link to="/" className="btn">
             Back to home
@@ -47,7 +58,7 @@ export default function Login() {
         </div>
 
         <p style={{ marginTop: 10, fontSize: 12, color: "var(--ink-mute)" }}>
-          Use your hospital or pilot credentials to access NeuroSight.
+          Hospital SSO and real accounts can be wired later; this build is optimized for guided demos.
         </p>
       </div>
     </div>

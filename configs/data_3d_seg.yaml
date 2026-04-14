@@ -1,0 +1,18 @@
+# BraTS-style segmentation data (folders per case; see scripts/train_3d_unet.py)
+dataset:
+  name: brats_seg
+  raw_dir: data/raw_3d_seg
+
+splits:
+  train_ratio: 0.75
+  val_ratio: 0.15
+  test_ratio: 0.10
+  seed: 42
+
+volume:
+  # Overridden from model_3d_unet.yaml input_shape by train_3d_unet.py
+  shape: [96, 96, 96]
+  channels: 4
+  normalize: true
+
+batch_size: 1

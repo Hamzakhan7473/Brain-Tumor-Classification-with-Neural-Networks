@@ -14,10 +14,19 @@ export default function Signup() {
     <div className="container" style={{ maxWidth: 840 }}>
       <h2 style={{ marginTop: 16 }}>Sign up</h2>
       <p style={{ color: "var(--ink-mute)", marginTop: 4 }}>
-        For U.S. hospitals, imaging centers, and radiologists interested in piloting NeuroSight.
+        For U.S. hospitals, imaging centers, and radiologists interested in piloting NeuroSight. For a hands-on demo,
+        you can skip this form.
       </p>
 
       <div className="card" style={{ marginTop: 14 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
+          <Link to="/upload" className="btn-primary">
+            Skip — try the demo app
+          </Link>
+          <Link to="/dashboard" className="btn btnOutline">
+            Open dashboard
+          </Link>
+        </div>
         <div className="grid2">
           <div style={{ display: "grid", gap: 10 }}>
             <label>
