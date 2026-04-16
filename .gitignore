@@ -59,6 +59,7 @@ wandb/
 tmp/
 temp/
 *.tmp
+.mplconfig/
 
 # Frontend
 frontend/node_modules/
