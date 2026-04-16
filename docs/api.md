@@ -36,7 +36,7 @@
 
 - **Run:** `uvicorn src.api.main:app --host 0.0.0.0 --port 8000` (from project root). Or: `docker build -t brain-tumor-mri-api . && docker run -p 8000:8000 brain-tumor-mri-api`
 - **Cloud deploy:** `docs/deploy-cloud.md` (GCP Cloud Run, AWS ECR + App Runner).
-- **Auth (optional):** Set `API_KEY` or comma-separated `API_KEYS` in the environment. When set, clients must send header `X-API-Key: <key>`. If unset, the API accepts requests without a key (**development only**). `GET /health` includes `"auth_required": true|false`.
+- **Auth (optional):** Set `API_KEY` or comma-separated `API_KEYS` in the environment. When set, clients must send the `X-API-Key` header with the secret string as the value. If unset, the API accepts requests without a key (**development only**). `GET /health` includes `"auth_required": true|false`.
 - **Rate limits:** Per client IP (slowapi), e.g. `/predict` 120/min, `/report` 60/min, `/clinical/feedback` 120/min (defaults may change).
 - **Endpoints:**
   - `GET /health` — Health check.
