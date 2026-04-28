@@ -1,0 +1,24 @@
+# 3D U-Net — binary WMH (FLAIR + T1), Kaggle MICCAI-style layout
+# python scripts/train_wmh_unet.py --config configs/model_wmh_unet.yaml --data-config configs/data_wmh_kaggle.yaml
+
+model:
+  name: unet_3d_wmh
+  input_shape: [96, 96, 96, 2]
+  num_classes: 2
+  base_filters: 32
+  depth: 4
+
+training:
+  epochs: 50
+  batch_size: 1
+  learning_rate: 0.0001
+  dice_weight: 0.5
+  lr_factor: 0.5
+  lr_patience: 5
+  early_stopping_patience: 15
+  early_stopping_monitor: val_loss
+
+paths:
+  checkpoint_dir: models/checkpoints/unet_3d_wmh
+  save_best: models/saved/unet_3d_wmh_best.keras
+  save_final: models/saved/unet_3d_wmh_final.keras
