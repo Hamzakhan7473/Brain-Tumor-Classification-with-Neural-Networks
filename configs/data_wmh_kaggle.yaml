@@ -1,0 +1,20 @@
+# WMH (Kaggle farahmo/wmh-dataset layout). Root should contain a `training/` tree.
+# Default: project `data/wmh_kaggle` → symlink to …/wmh_data from the archive.
+# Override: export WMH_DATA_DIR=/path/to/wmh_data
+
+dataset:
+  name: wmh_kaggle
+  raw_dir: data/wmh_kaggle
+
+splits:
+  train_ratio: 0.75
+  val_ratio: 0.15
+  test_ratio: 0.10
+  seed: 42
+
+volume:
+  shape: [96, 96, 96]
+  channels: 2
+  normalize: true
+
+batch_size: 1

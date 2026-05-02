@@ -1,0 +1,66 @@
+/* Scan viewport / milestone — colors via var() + color-mix only */
+
+/* ios-sweep keyframes: see ios-tokens.css */
+
+@keyframes dotPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--green-600) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+/* Moving sweep band: glow (z‑3) + line (z‑4) stacked; parent animates vertically */
+.scan-sweep-stack {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 50px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  pointer-events: none;
+  z-index: 3;
+  overflow: visible;
+}
+
+.scan-sweep-stack--motion {
+  animation: ios-sweep 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.scan-sweep-stack__line--solid {
+  background: color-mix(in srgb, var(--green-600) 68%, transparent);
+}
+
+.scan-sweep-stack--paused {
+  animation: none;
+}
+
+.scan-sweep-stack__glow {
+  position: relative;
+  z-index: 3;
+  height: 48px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--green-600) 12%, transparent),
+    transparent
+  );
+  flex-shrink: 0;
+}
+
+.scan-sweep-stack__line {
+  position: relative;
+  z-index: 4;
+  height: 2px;
+  width: 100%;
+  background: color-mix(in srgb, var(--green-600) 60%, transparent);
+  flex-shrink: 0;
+}
+
+.dot-pulse {
+  animation: dotPulse 1.6s ease-in-out infinite;
+}
+
+/* WMH spot overlays removed — viewport uses API saliency only. */

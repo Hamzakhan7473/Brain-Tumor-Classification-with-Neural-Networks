@@ -1,0 +1,6 @@
+{
+  "_comment": "Update from offline validation tensors for this checkpoint; illustrative defaults.",
+  "wmh_unet_dual_preproc_channel0": {"mean": 0.085, "std": 1.035, "mean_std": 0.22, "std_std": 0.09},
+  "classifier_div255_patch": {"mean": 0.42, "std": 0.28, "mean_std": 0.12, "std_std": 0.06}
+}
+
