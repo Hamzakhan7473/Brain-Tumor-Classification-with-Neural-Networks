@@ -1,4 +1,7 @@
 :root {
+  --nav-inner-h: 52px;
+  --nav-safe-top: env(safe-area-inset-top, 0px);
+  --nav-outer-height: calc(var(--nav-inner-h) + var(--nav-safe-top));
   --green-900: #052e1c;
   --green-800: #094d2e;
   --green-700: #0f6e45;
@@ -53,7 +56,7 @@ a:visited {
 
 /* Shared layout helpers (used by non-landing screens) */
 .page {
-  padding-top: 88px; /* fixed nav offset */
+  padding-top: calc(var(--nav-outer-height) + 24px);
 }
 
 .container {
@@ -187,10 +190,14 @@ nav {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 3rem;
-  height: 68px;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(16px);
+  padding-left: clamp(16px, 4vw, 3rem);
+  padding-right: clamp(16px, 4vw, 3rem);
+  padding-top: var(--nav-safe-top, env(safe-area-inset-top, 0px));
+  min-height: var(--nav-outer-height);
+  box-sizing: border-box;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--line);
 }
 
@@ -319,7 +326,7 @@ nav {
   grid-template-columns: 1fr 1fr;
   align-items: center;
   padding: 0 5vw;
-  padding-top: 68px;
+  padding-top: var(--nav-outer-height);
   gap: 4rem;
   max-width: 1280px;
   margin: 0 auto;
@@ -523,6 +530,40 @@ nav {
   }
   .hero-right {
     height: 420px;
+  }
+}
+
+/* Upload & scan simulation layout (UploadPredict) — md+ fixed sidebar width */
+.upload-predict-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 14px;
+  align-items: stretch;
+}
+
+@media (min-width: 768px) {
+  .upload-predict-grid {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    align-items: start;
+    gap: 16px;
+  }
+}
+
+.upload-predict-grid-main {
+  min-width: 0;
+}
+
+.upload-predict-grid-side {
+  min-width: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
   }
 }
 

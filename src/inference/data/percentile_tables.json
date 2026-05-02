@@ -1,0 +1,10 @@
+{
+  "_schema_note": "Illustrative age/sex strata for percentile lookup — replace with validated normative cohort data before any clinical claim.",
+  "version": "0.1-research-placeholder",
+  "bins": [
+    {"sex_any": true, "age_min": 0, "age_max": 54, "p25_cc": 0.35, "p50_cc": 1.1, "p75_cc": 3.8, "p90_cc": 8.9},
+    {"sex_any": true, "age_min": 55, "age_max": 69, "p25_cc": 1.05, "p50_cc": 4.05, "p75_cc": 13.95, "p90_cc": 28.0},
+    {"sex_any": true, "age_min": 70, "age_max": 120, "p25_cc": 5.08, "p50_cc": 9.93, "p75_cc": 20.93, "p90_cc": 31.93}
+  ]
+}
+

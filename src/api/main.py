@@ -1,13 +1,15 @@
-"""
-REST API for brain tumor MRI: predict and optional report draft.
+"""REST API for brain tumor MRI: predict and optional report draft.
 Deploy with: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
 Phase 1 roadmap: API-first for PACS/RIS and cloud deployment (Cloud Run, Lambda).
 
-Optional auth: set API_KEY or API_KEYS (comma-separated) in environment; clients send X-API-Key.
+Optional auth: set API_KEY, APP_API_KEY, or API_KEYS (comma-separated); clients send X-API-Key.
 If unset, requests are accepted without a key (development only).
 """
+import json
 import os
 import sys
+import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 # Ensure project root on path when run as module
@@ -23,7 +25,7 @@ except ImportError:
 
 from typing import Any, Dict, Optional
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Security, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, Security, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
@@ -34,11 +36,35 @@ from slowapi.util import get_remote_address
 
 from src.api.features import FeaturesResponse, build_features_response
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load every Keras checkpoint once at startup (TensorFlow only)."""
+    from src.inference.model_registry import registry
+
+    print("=" * 60)
+    print("NeuroSight API starting…")
+    registry.load_all()
+    if not getattr(registry, "models", {}):
+        print("ERROR: No models loaded!")
+        raise RuntimeError("No models loaded — check models/saved/")
+    print(f"Loaded {len(registry.models)} model(s):")
+    for name in sorted(registry.models.keys()):
+        cfg = registry.configs[name]
+        ish = cfg.get("input_shape")
+        task = cfg.get("task", "classification")
+        print(f"  - {name}: input {ish}, task {task}")
+    print("API ready at http://127.0.0.1:8000")
+    print("=" * 60)
+    yield
+
+
 app = FastAPI(
     title="Brain Tumor MRI API",
     description="Classification and optional report draft for brain MRI (2D slice). Supports JPG/PNG and DICOM. "
     "Optional partner auth via X-API-Key when API_KEY(s) are set in the environment.",
     version="0.2.0",
+    lifespan=lifespan,
 )
 
 # CORS for browser-based frontend
@@ -48,9 +74,13 @@ if not allowed_origins:
     allowed_origins = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:3000",
         "http://localhost:4173",
         "http://127.0.0.1:4173",
     ]
+frontend_url = (os.environ.get("FRONTEND_URL") or "").strip()
+if frontend_url and frontend_url not in allowed_origins:
+    allowed_origins.append(frontend_url)
 
 app.add_middleware(
     CORSMiddleware,
@@ -66,7 +96,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 def _load_api_keys() -> set:
-    raw = os.environ.get("API_KEYS") or os.environ.get("API_KEY") or ""
+    raw = os.environ.get("API_KEYS") or os.environ.get("API_KEY") or os.environ.get("APP_API_KEY") or ""
     if not raw.strip():
         return set()
     return {k.strip() for k in raw.split(",") if k.strip()}
@@ -80,10 +110,15 @@ async def verify_api_key(x_api_key: Optional[str] = Security(api_key_header)):
     keys = _load_api_keys()
     if not keys:
         return None
-    if not x_api_key or x_api_key not in keys:
+    if not x_api_key:
         raise HTTPException(
             status_code=401,
-            detail="Invalid or missing API key. Send header X-API-Key.",
+            detail="Missing API key. Send header X-API-Key.",
+        )
+    if x_api_key not in keys:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid API key.",
         )
     return x_api_key
 
@@ -94,10 +129,29 @@ class PredictResponse(BaseModel):
     confidence: float
     probabilities: dict
     model: str
+    prediction: str = Field(..., description="Same as label (alias for newer clients)")
+    class_probabilities: dict = Field(..., description="Same as probabilities")
     dicom_meta: Optional[dict] = None
     study_instance_uid: Optional[str] = None
     site_id: Optional[str] = None
     shadow_mode: bool = False
+    # Optional enrichment for clients (backward compatible)
+    model_version: Optional[str] = Field(None, description="API or deployment bundle version")
+    input_shape: Optional[list[int]] = Field(None, description="Batch tensor shape e.g. [1,H,W,C]")
+    preprocessing_applied: Optional[list[str]] = Field(None, description="Ordered preprocessing steps")
+    saliency_url: Optional[str] = Field(None, description="Optional saliency map URL when available")
+    saliency_map_b64: Optional[str] = Field(None, description="Optional Grad-CAM PNG as base64")
+    inference_time_s: Optional[float] = Field(None, description="Wall time for this request (seconds)")
+    # Defense-in-depth / radiologist workflow (optional for older clients)
+    warnings: list[str] = Field(default_factory=list)
+    disposition: Optional[str] = None
+    display_prediction: Optional[str] = None
+    radiologist_action_required: Optional[str] = None
+    uncertainty: Optional[dict] = None
+    validation: Optional[dict] = None
+    clinical_context: Optional[dict] = None
+    audit_id: Optional[str] = None
+    audit_timestamp: Optional[str] = None
 
 
 class ReportResponse(BaseModel):
@@ -178,10 +232,45 @@ class DocsAnswerResponse(BaseModel):
     citations: list[DocsCitation]
 
 class Predict3DResponse(BaseModel):
+    """WMH segmentation (and future 3D tasks). Maps ``run_predict_3d`` output."""
+
     label: str
+    prediction: Optional[str] = None
     confidence: float
     probabilities: dict
     model: str
+    task: Optional[str] = None
+    wmh: Optional[dict] = None
+    inference_time_s: Optional[float] = None
+    saliency_map_b64: Optional[str] = None
+    input_shape: Optional[list[int]] = Field(None)
+    risk_level: Optional[str] = None
+    warnings: list[str] = Field(default_factory=list)
+    uncertainty: Optional[dict] = None
+    validation: Optional[dict] = None
+    clinical_context: Optional[dict] = None
+    audit_id: Optional[str] = None
+    audit_timestamp: Optional[str] = None
+
+
+class ReportSignBody(BaseModel):
+    audit_id: str = Field(..., min_length=8, description="Correlation id returned by inference")
+    agreed: bool
+    override: Optional[str] = Field(None, description="Corrected narrative when agreed is false")
+    radiologist_id: Optional[str] = None
+
+
+class ReportDeferBody(BaseModel):
+    audit_id: str = Field(..., min_length=8)
+    reason: str = Field(..., min_length=1)
+
+
+class FindingsDisagreeBody(BaseModel):
+    """Capture radiologist override / disagreement for model improvement datasets."""
+
+    audit_id: str
+    notes: str = Field(..., min_length=1)
+    radiologist_id: Optional[str] = None
 
 class TrialCreate(BaseModel):
     name: str
@@ -220,36 +309,35 @@ def _get_class_names():
     return ["glioma", "meningioma", "pituitary", "notumor"]
 
 
+def _parse_optional_context_form(raw: Optional[str]) -> Dict[str, Any]:
+    if raw is None or not str(raw).strip():
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "invalid_context_json", "message": str(exc)},
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "invalid_context_json", "message": "context must be a JSON object"},
+        )
+    return parsed
+
+
 def _run_predict(bytes_data: bytes, model_name: str, filename: str, content_type: str):
-    """Dispatch to DICOM or image pipeline; return (label, confidence, probs, dicom_meta)."""
-    import numpy as np
-    from src.inference.predict import load_model_and_predict, MODEL_INPUT_SIZES
+    """Keras classification only; returns legacy 6-tuple for /report helpers."""
+    from src.inference.inference_exceptions import InputValidationFailed
+    from src.inference.predict import predict_legacy_tuple
 
-    classes = _get_class_names()
-    size = MODEL_INPUT_SIZES.get(model_name, (224, 224))
-    dicom_meta = None
-
-    is_dicom = (
-        filename.lower().endswith(".dcm")
-        or filename.lower().endswith(".dicom")
-        or (content_type or "").lower() in ("application/dicom", "application/dicom+xml")
-    )
-
-    if is_dicom:
-        from src.data.dicom_loader import load_dicom_slice
-        batch, dicom_meta = load_dicom_slice(bytes_data, target_size=size, normalize=True)
-    else:
-        from src.data.dataset import load_image_from_bytes
-        batch = load_image_from_bytes(bytes_data, target_size=size, normalize=True)
-
-    labels, probs = load_model_and_predict(model_name, batch, classes, _ROOT)
-    if labels is None or probs is None:
-        return None, None, None, dicom_meta
-    idx = int(probs[0].argmax())
-    label = labels[0]
-    conf = float(probs[0][idx])
-    prob_dict = {classes[i]: float(probs[0][i]) for i in range(len(classes))}
-    return label, conf, prob_dict, dicom_meta
+    try:
+        return predict_legacy_tuple(bytes_data, filename, model_name, content_type)
+    except InputValidationFailed:
+        raise
+    except ValueError as e:
+        raise ValueError(str(e)) from e
 
 
 def _log_api_clinical(
@@ -365,16 +453,10 @@ def public_features(request: Request):
 
 @app.get("/models")
 def list_models():
-    """
-    List model names that are available on disk.
-    Uses MODEL_DIR (if set) or defaults to models/saved/.
-    """
-    try:
-        from src.inference.predict import list_available_models
+    """All checkpoints loaded into the Keras inference registry (2D + 3D)."""
+    from src.inference.model_registry import registry
 
-        return {"models": list_available_models(_ROOT)}
-    except Exception:
-        return {"models": []}
+    return registry.list_models()
 
 
 @app.post("/docs/ask", response_model=DocsAnswerResponse)
@@ -456,10 +538,13 @@ async def docs_ask(
 async def predict(
     request: Request,
     file: UploadFile = File(...),
-    model: str = "custom_cnn",
+    model: str = Form("custom_cnn"),
+    model_name: Optional[str] = Query(None, description="Alias for model (query param; overrides form model)"),
     study_instance_uid: Optional[str] = Form(None),
     site_id: Optional[str] = Form(None),
     shadow_mode: bool = Form(False),
+    context: Optional[str] = Form(None, description="JSON clinical context (age, sex, indication, …)"),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
     _api_key: Optional[str] = Depends(verify_api_key),
 ):
     """
@@ -470,39 +555,105 @@ async def predict(
     - site_id: hospital or site code
     - shadow_mode: if true, append result to logs/shadow_results.jsonl (research / shadow deployment)
     """
-    from src.inference.predict import list_available_models
+    from src.inference.audit_log import log_inference
+    from src.inference.inference_exceptions import InputValidationFailed
+    from src.inference.predict import list_available_models, run_predict_2d
 
+    effective_model = (model_name or model).strip() or "custom_cnn"
     allowed = set(list_available_models(_ROOT)) or {"custom_cnn", "xception", "transfer"}
-    if model not in allowed:
-        raise HTTPException(400, detail=f"Unknown model '{model}'. Available: {sorted(allowed)}")
+    if effective_model not in allowed:
+        raise HTTPException(400, detail=f"Unknown model '{effective_model}'. Available: {sorted(allowed)}")
     bytes_data = await file.read()
     if not bytes_data:
         raise HTTPException(400, detail="Empty file")
     filename = file.filename or "image"
     content_type = file.content_type or ""
+    ctx = _parse_optional_context_form(context)
 
-    label, conf, probs, dicom_meta = _run_predict(bytes_data, model, filename, content_type)
-    if label is None:
-        raise HTTPException(503, detail="Model not available or load failed")
+    try:
+        out = run_predict_2d(bytes_data, filename, effective_model, content_type, clinical_context=ctx)
+    except InputValidationFailed as exc:
+        raise HTTPException(status_code=422, detail=exc.detail) from exc
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+    probs = dict(out["class_probabilities"])
+    disp = out.get("disposition") or "predicted"
+    if disp == "indeterminate":
+        lbl = "indeterminate"
+    else:
+        lbl = str(
+            out["display_prediction"] if out.get("display_prediction") is not None else out["prediction"]
+        )
+    cf = float(out["confidence"])
+    pred_argmax = str(out["prediction"])
 
     await _log_api_clinical(
         "api_predict",
         study_instance_uid,
         site_id,
         shadow_mode,
-        {"model": model, "label": label, "confidence": conf, "probabilities": probs},
+        {
+            "model": effective_model,
+            "label": pred_argmax,
+            "display_label": lbl,
+            "disposition": disp,
+            "confidence": cf,
+            "probabilities": probs,
+        },
     )
-    _maybe_shadow_store(shadow_mode, study_instance_uid, site_id, model, label, conf, probs, "/predict")
+    _maybe_shadow_store(
+        shadow_mode, study_instance_uid, site_id, effective_model, pred_argmax, cf, probs, "/predict"
+    )
+
+    api_ver = (os.environ.get("API_MODEL_VERSION") or "").strip() or app.version
+
+    audit_payload = {
+        "label": lbl,
+        "confidence": cf,
+        "probabilities": probs,
+        "disposition": disp,
+        "warnings": out.get("warnings") or [],
+        "uncertainty": out.get("uncertainty"),
+        "validation": out.get("validation"),
+    }
+    audit_id, audit_ts = log_inference(
+        bytes_data,
+        filename,
+        effective_model,
+        api_ver,
+        ctx,
+        {"endpoint": "/predict", "study_instance_uid": study_instance_uid, "site_id": site_id},
+        audit_payload,
+        x_user_id,
+    )
 
     return PredictResponse(
-        label=label,
-        confidence=conf,
+        label=lbl,
+        prediction=lbl,
+        confidence=cf,
         probabilities=probs,
-        model=model,
-        dicom_meta=dicom_meta,
+        class_probabilities=probs,
+        model=effective_model,
+        dicom_meta=out.get("dicom_meta"),
         study_instance_uid=study_instance_uid,
         site_id=site_id,
         shadow_mode=shadow_mode,
+        model_version=api_ver,
+        input_shape=out.get("input_shape"),
+        preprocessing_applied=out.get("preprocessing_applied"),
+        saliency_url=None,
+        saliency_map_b64=out.get("saliency_map_b64"),
+        inference_time_s=out.get("inference_time_s"),
+        warnings=list(out.get("warnings") or []),
+        disposition=disp,
+        display_prediction=out.get("display_prediction"),
+        radiologist_action_required=out.get("radiologist_action_required"),
+        uncertainty=out.get("uncertainty"),
+        validation=out.get("validation"),
+        clinical_context=ctx or None,
+        audit_id=audit_id,
+        audit_timestamp=audit_ts,
     )
 
 
@@ -521,12 +672,17 @@ def list_models_3d():
 async def predict_3d(
     request: Request,
     file: UploadFile = File(...),
-    model: str = "cnn_3d_best",
+    model: str = Form("unet_3d_wmh"),
+    model_name: Optional[str] = Query(None, description="Overrides form `model` when set."),
+    context: Optional[str] = Form(None, description="JSON object; patient age is required for WMH grading"),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
     _api_key: Optional[str] = Depends(verify_api_key),
 ):
     """
-    Upload a NIfTI volume (.nii or .nii.gz) and run a 3D classifier.
+    Upload NIfTI (.nii / .nii.gz): **WMH U-Net** segmentation (Keras registry).
     """
+    effective = (model_name or model).strip() or "unet_3d_wmh"
+
     filename = file.filename or "volume.nii.gz"
     if not (filename.lower().endswith(".nii") or filename.lower().endswith(".nii.gz")):
         raise HTTPException(status_code=400, detail="file must be a NIfTI volume (.nii or .nii.gz)")
@@ -534,33 +690,124 @@ async def predict_3d(
     if not bytes_data:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    from src.inference.predict_3d import list_available_models_3d, predict_volume_from_bytes
+    from src.inference.audit_log import log_inference
+    from src.inference.inference_exceptions import ClinicalContextRequired, InputValidationFailed
+    from src.inference.predict_3d import list_available_models_3d, run_predict_3d
 
-    allowed = set(list_available_models_3d(_ROOT)) or {"cnn_3d_best", "cnn_3d_final"}
-    if model not in allowed:
-        raise HTTPException(400, detail=f"Unknown 3D model '{model}'. Available: {sorted(allowed)}")
-
-    classes = _get_class_names()
-    shape_raw = (os.environ.get("VOLUME_3D_SHAPE") or "96,96,96").strip()
+    allowed = set(list_available_models_3d(_ROOT)) or {"unet_3d_wmh"}
+    if effective not in allowed:
+        raise HTTPException(400, detail=f"Unknown 3D model '{effective}'. Available: {sorted(allowed)}")
+    ctx = _parse_optional_context_form(context)
     try:
-        target_shape = tuple(int(x.strip()) for x in shape_raw.split(","))
-        if len(target_shape) != 3:
-            raise ValueError("bad shape")
-    except Exception:
-        target_shape = (96, 96, 96)
+        raw = run_predict_3d(bytes_data, filename, effective, clinical_context=ctx)
+    except InputValidationFailed as exc:
+        raise HTTPException(status_code=422, detail=exc.detail) from exc
+    except ClinicalContextRequired as exc:
+        raise HTTPException(status_code=422, detail=exc.detail) from exc
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
-    label, conf, probs = predict_volume_from_bytes(
-        model_name=model,
-        volume_bytes=bytes_data,
-        filename=filename,
-        class_names=classes,
-        target_shape=target_shape,
-        project_root=_ROOT,
+    risk = raw.get("wmh", {}).get("risk_level") if raw.get("wmh") else None
+    api_ver = (os.environ.get("API_MODEL_VERSION") or "").strip() or app.version
+    audit_id, audit_ts = log_inference(
+        bytes_data,
+        filename,
+        effective,
+        api_ver,
+        ctx,
+        {"endpoint": "/predict-3d"},
+        raw,
+        x_user_id,
     )
-    if label is None:
-        raise HTTPException(status_code=503, detail="3D model not available or load failed")
 
-    return Predict3DResponse(label=label, confidence=float(conf), probabilities=probs, model=model)
+    return Predict3DResponse(
+        label=str(raw["label"]),
+        prediction=raw.get("prediction"),
+        confidence=float(raw["confidence"]),
+        probabilities=dict(raw["probabilities"]),
+        model=str(raw["model"]),
+        task=raw.get("task"),
+        wmh=raw.get("wmh"),
+        inference_time_s=raw.get("inference_time_s"),
+        saliency_map_b64=raw.get("saliency_map_b64"),
+        input_shape=raw.get("input_shape"),
+        risk_level=risk,
+        warnings=list(raw.get("warnings") or []),
+        uncertainty=raw.get("uncertainty"),
+        validation=raw.get("validation"),
+        clinical_context=raw.get("clinical_context") or ctx,
+        audit_id=audit_id,
+        audit_timestamp=audit_ts,
+    )
+
+
+@app.post("/report/sign")
+@limiter.limit("60/minute")
+async def report_sign(
+    request: Request,
+    body: ReportSignBody,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.inference.audit_log import append_signoff_event, audit_record_exists
+
+    aid = body.audit_id.strip()
+    if not audit_record_exists(aid):
+        raise HTTPException(status_code=404, detail="audit_id not found in local inference logs")
+    if body.agreed and (body.override or "").strip():
+        raise HTTPException(status_code=400, detail="omit override when agreed is true")
+    if not body.agreed and not (body.override or "").strip():
+        raise HTTPException(status_code=400, detail="override narrative required when agreed is false")
+    rad = (body.radiologist_id or x_user_id or "").strip() or None
+    sid = append_signoff_event(
+        aid,
+        "sign",
+        {"agreed": body.agreed, "override": body.override},
+        rad,
+    )
+    return {
+        "ok": True,
+        "signoff_id": sid,
+        "audit_id": aid,
+        "fhir_diagnostic_report_reference": None,
+        "pdf_url": None,
+        "notice": "FHIR Resource and PDF issuance are not wired in this research build.",
+    }
+
+
+@app.post("/report/defer")
+@limiter.limit("60/minute")
+async def report_defer(
+    request: Request,
+    body: ReportDeferBody,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.inference.audit_log import append_signoff_event, audit_record_exists
+
+    aid = body.audit_id.strip()
+    if not audit_record_exists(aid):
+        raise HTTPException(status_code=404, detail="audit_id not found")
+    sid = append_signoff_event(aid, "defer", {"reason": body.reason.strip()}, x_user_id)
+    return {"ok": True, "defer_id": sid, "audit_id": aid}
+
+
+@app.post("/clinical/findings-disagree")
+@limiter.limit("60/minute")
+async def findings_disagree_endpoint(
+    request: Request,
+    body: FindingsDisagreeBody,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    from src.inference.audit_log import append_signoff_event, audit_record_exists
+
+    aid = body.audit_id.strip()
+    if not audit_record_exists(aid):
+        raise HTTPException(status_code=404, detail="audit_id not found")
+    rad = (body.radiologist_id or x_user_id or "").strip() or None
+    rid = append_signoff_event(aid, "findings_disagree", {"notes": body.notes.strip()}, rad)
+    return {"ok": True, "feedback_id": rid, "audit_id": aid}
 
 
 # ----------------------------
@@ -707,7 +954,16 @@ async def report(
         raise HTTPException(400, detail="Empty file")
     filename = file.filename or "image"
     content_type = file.content_type or ""
-    label, conf, probs, _ = _run_predict(bytes_data, model, filename, content_type)
+    try:
+        from src.inference.inference_exceptions import InputValidationFailed
+
+        label, conf, probs, _, _, _ = _run_predict(bytes_data, model, filename, content_type)
+    except InputValidationFailed as exc:
+        raise HTTPException(status_code=422, detail=exc.detail) from exc
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
     if label is None:
         raise HTTPException(503, detail="Model not available or load failed")
 

@@ -38,6 +38,10 @@ slowapi>=0.1.9
 python-multipart>=0.0.6
 motor>=3.0.0
 
+# Dev / tests
+pytest>=7.4.0
+httpx>=0.25.0
+
 # Utilities
 tqdm>=4.65.0
 python-dotenv>=1.0.0

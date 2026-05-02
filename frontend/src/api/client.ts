@@ -2,11 +2,21 @@ export type PredictResponse = {
   label: string;
   confidence: number;
   probabilities: Record<string, number>;
+  /** Alias of label */
+  prediction?: string;
+  /** Alias of probabilities */
+  class_probabilities?: Record<string, number>;
   model: string;
   dicom_meta?: Record<string, unknown> | null;
   study_instance_uid?: string | null;
   site_id?: string | null;
   shadow_mode: boolean;
+  model_version?: string | null;
+  input_shape?: number[] | null;
+  preprocessing_applied?: string[] | null;
+  saliency_url?: string | null;
+  saliency_map_b64?: string | null;
+  inference_time_s?: number | null;
 };
 
 export type ReportResponse = {
@@ -115,7 +125,7 @@ export function formatApiConnectionHint(baseMessage: string): string {
   if (/fetch|network|failed to fetch|load failed|networkerror/i.test(baseMessage)) {
     return `${baseMessage}\n\nStart the API from the project root: ./scripts/run_api.sh\nOr run API + UI together: ./scripts/demo_local.sh`;
   }
-  if (/401|invalid or missing api key|api key/i.test(baseMessage)) {
+  if (/401|403|invalid or missing api key|api key/i.test(baseMessage)) {
     return `${baseMessage}\n\nSet VITE_API_KEY in frontend/.env to the same value as backend API_KEY, then restart npm run dev.`;
   }
   if (/503|model not available|load failed/i.test(baseMessage)) {
@@ -133,21 +143,48 @@ async function readErrorMessage(res: Response): Promise<string> {
   }
 }
 
+export type RegistryModelRow = {
+  name: string;
+  description: string;
+  input_shape: number[];
+  dims: number;
+  classes: string[];
+  task: string;
+  normalization?: string | null;
+  loaded?: boolean;
+  weights_file?: string;
+};
+
+export async function listRegistryModels(apiKeyOverride?: string): Promise<RegistryModelRow[]> {
+  const headers: Record<string, string> = { ...buildAuthHeaders() };
+  const k = (apiKeyOverride ?? "").trim();
+  if (k) headers["X-API-Key"] = k;
+  const res = await fetch(apiUrl("/models"), { method: "GET", headers });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as RegistryModelRow[];
+}
+
 export async function predictScan(input: {
   file: File;
   model: string;
   study_instance_uid?: string;
   site_id?: string;
   shadow_mode: boolean;
+  /** Clinical context JSON (same guardrails as lib/api predict). */
+  context?: Record<string, unknown>;
 }): Promise<PredictResponse> {
   const url = apiURL("/predict");
-  url.searchParams.set("model", input.model);
+  url.searchParams.set("model_name", input.model);
 
   const fd = new FormData();
   fd.append("file", input.file, input.file.name);
+  fd.append("model", input.model);
   if (input.study_instance_uid) fd.append("study_instance_uid", input.study_instance_uid);
   if (input.site_id) fd.append("site_id", input.site_id);
   fd.append("shadow_mode", input.shadow_mode ? "true" : "false");
+  if (input.context && Object.keys(input.context).length > 0) {
+    fd.append("context", JSON.stringify(input.context));
+  }
 
   const res = await fetch(url.toString(), {
     method: "POST",
