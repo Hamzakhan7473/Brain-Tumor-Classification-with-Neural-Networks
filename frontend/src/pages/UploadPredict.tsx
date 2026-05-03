@@ -580,8 +580,14 @@ export default function UploadPredict() {
               ) : null}
 
               <div style={{ marginTop: 18 }}>
-                <IosButton variant="ghost" size="md" onClick={() => navigate("/clinical-feedback")}>
-                  Go to feedback
+                <IosButton
+                  variant="ghost"
+                  size="md"
+                  onClick={() =>
+                    navigate(`/clinical-feedback?caseId=${encodeURIComponent(studyUid)}`)
+                  }
+                >
+                  Submit feedback
                 </IosButton>
               </div>
             </>

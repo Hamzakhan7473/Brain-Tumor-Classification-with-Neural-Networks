@@ -260,3 +260,89 @@ export function predictApiDisplayBase(): string {
   const px = b.startsWith("/") ? b : `/${b}`;
   return `${origin}${px}`;
 }
+
+// --- Shadow queue (Phase B) -------------------------------------------------
+
+export type ShadowQueueResponse = {
+  items: Array<Record<string, unknown>>;
+  total: number;
+  kpis: Record<string, unknown>;
+};
+
+export async function fetchShadowQueue(
+  params: URLSearchParams,
+  apiKeyOverride?: string,
+): Promise<ShadowQueueResponse> {
+  const urlStr = `${resolvePostUrl("/shadow/queue")}?${params.toString()}`;
+  const key = mergedApiKey(apiKeyOverride);
+  const headers: Record<string, string> = {};
+  if (key) headers["X-API-Key"] = key;
+  const res = await fetch(urlStr, { headers });
+  if (!res.ok) throw new ApiError(res.status, await res.text(), "/shadow/queue");
+  return (await res.json()) as ShadowQueueResponse;
+}
+
+export async function fetchShadowConfig(apiKeyOverride?: string): Promise<{
+  classes: string[];
+  shadow_mode_disclaimer: string;
+}> {
+  const urlStr = resolvePostUrl("/shadow/config");
+  const key = mergedApiKey(apiKeyOverride);
+  const headers: Record<string, string> = {};
+  if (key) headers["X-API-Key"] = key;
+  const res = await fetch(urlStr, { headers });
+  if (!res.ok) throw new ApiError(res.status, await res.text(), "/shadow/config");
+  return res.json();
+}
+
+export async function submitShadowFeedback(
+  studyUid: string,
+  input: { verdict: "agree" | "disagree" | "partial"; ground_truth?: Record<string, unknown>; notes?: string },
+  apiKeyOverride?: string,
+): Promise<{ ok: boolean; audit_id?: string }> {
+  const urlStr = resolvePostUrl(`/shadow/cases/${encodeURIComponent(studyUid)}/feedback`);
+  const key = mergedApiKey(apiKeyOverride);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (key) headers["X-API-Key"] = key;
+  const res = await fetch(urlStr, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new ApiError(res.status, await res.text(), "/shadow/feedback");
+  return res.json();
+}
+
+export async function assignShadowCase(
+  studyUid: string,
+  input: { radiologist_id: string; radiologist_name: string },
+  apiKeyOverride?: string,
+): Promise<{ ok: boolean }> {
+  const urlStr = resolvePostUrl(`/shadow/cases/${encodeURIComponent(studyUid)}/assign`);
+  const key = mergedApiKey(apiKeyOverride);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (key) headers["X-API-Key"] = key;
+  const res = await fetch(urlStr, { method: "POST", headers, body: JSON.stringify(input) });
+  if (!res.ok) throw new ApiError(res.status, await res.text(), "/shadow/assign");
+  return res.json();
+}
+
+export function shadowExportUrl(startIso: string, endIso: string, format: "csv" | "json" = "csv"): string {
+  const root = apiBase().replace(/\/$/, "");
+  const q = `start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}&format=${format}`;
+  const path = `/shadow/export?${q}`;
+  if (root.startsWith("http://") || root.startsWith("https://")) {
+    return `${root}${path}`;
+  }
+  return `${root}${path}`;
+}
+
+export async function retryShadowCase(studyUid: string, apiKeyOverride?: string): Promise<{ ok: boolean }> {
+  const urlStr = resolvePostUrl(`/shadow/cases/${encodeURIComponent(studyUid)}/retry`);
+  const key = mergedApiKey(apiKeyOverride);
+  const headers: Record<string, string> = {};
+  if (key) headers["X-API-Key"] = key;
+  const res = await fetch(urlStr, { method: "POST", headers });
+  if (!res.ok) throw new ApiError(res.status, await res.text(), "/shadow/retry");
+  return res.json();
+}

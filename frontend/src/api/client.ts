@@ -49,16 +49,8 @@ export type MetricsResponse = {
   unclear?: number;
 };
 
-export type DocsAnswer = {
-  answer: string;
-  citations: Array<{
-    id: string;
-    title?: string;
-    source?: string;
-    snippet: string;
-    score?: number;
-  }>;
-};
+export type { DocsAssistantAnswer as DocsAnswer, DocsAssistantCitation } from "../lib/docsApi";
+export { askDocs, listIndexedDocs } from "../lib/docsApi";
 
 const API_KEY = (import.meta.env.VITE_API_KEY || "").trim();
 
@@ -128,8 +120,8 @@ export function formatApiConnectionHint(baseMessage: string): string {
   if (/401|403|invalid or missing api key|api key/i.test(baseMessage)) {
     return `${baseMessage}\n\nSet VITE_API_KEY in frontend/.env to the same value as backend API_KEY, then restart npm run dev.`;
   }
-  if (/503|model not available|load failed/i.test(baseMessage)) {
-    return `${baseMessage}\n\nPlace trained weights in models/saved/ for the selected model name, or run training scripts from the README.`;
+  if (/503|model not available|load failed|document index not built/i.test(baseMessage)) {
+    return `${baseMessage}\n\nIf this is the Docs Assistant: run \`python scripts/index_clinical_docs.py\` with PAGEINDEX_API_KEY set, or place trained weights in models/saved/ for inference.`;
   }
   return baseMessage;
 }
@@ -222,34 +214,62 @@ export async function generateReport(input: {
   return (await res.json()) as ReportResponse;
 }
 
-export async function submitClinicalFeedback(input: {
-  study_instance_uid: string;
-  site_id?: string;
-  feedback: "agree" | "wrong_class" | "unclear";
-  corrected_class?: string | null;
-  notes?: string | null;
-  model?: string | null;
-}): Promise<{ status: string; received?: boolean }> {
-  const url = apiUrl("/clinical/feedback");
+export type ClinicalVerdict = "agree" | "partial" | "disagree";
 
-  const res = await fetch(url, {
+export async function submitStructuredClinicalFeedback(input: {
+  case_id: string;
+  verdict: ClinicalVerdict;
+  ground_truth?: Record<string, unknown> | null;
+  error_categories?: string[];
+  clinical_notes?: string | null;
+  time_spent_s: number;
+  reviewer_display_name?: string | null;
+  reviewer_role?: string | null;
+  credentials?: string | null;
+}): Promise<{ ok: boolean; feedback_id: string; audit_id: string }> {
+  const res = await fetch(apiUrl("/clinical/feedback"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...buildAuthHeaders(),
     },
     body: JSON.stringify({
-      study_instance_uid: input.study_instance_uid,
-      site_id: input.site_id || null,
-      feedback: input.feedback,
-      corrected_class: input.feedback === "wrong_class" ? input.corrected_class : null,
-      notes: input.notes || null,
-      model: input.model || null,
+      case_id: input.case_id,
+      verdict: input.verdict,
+      ground_truth: input.ground_truth ?? null,
+      error_categories: input.error_categories ?? [],
+      clinical_notes: input.clinical_notes ?? null,
+      time_spent_s: input.time_spent_s,
+      reviewer_display_name: input.reviewer_display_name ?? null,
+      reviewer_role: input.reviewer_role ?? null,
+      credentials: input.credentials ?? null,
     }),
   });
 
   if (!res.ok) throw new Error(await readErrorMessage(res));
-  return (await res.json()) as { status: string; received?: boolean };
+  return (await res.json()) as { ok: boolean; feedback_id: string; audit_id: string };
+}
+
+export async function getClinicalFeedbackStats(): Promise<{
+  reviewed_this_month: number;
+  agreement_rate: number;
+  avg_time_s: number;
+}> {
+  const res = await fetch(apiUrl("/clinical/feedback/stats"), { headers: buildAuthHeaders() });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as {
+    reviewed_this_month: number;
+    agreement_rate: number;
+    avg_time_s: number;
+  };
+}
+
+export async function getClinicalFeedbackRecent(limit = 10): Promise<{ items: Array<Record<string, unknown>> }> {
+  const u = apiURL("/clinical/feedback/recent");
+  u.searchParams.set("limit", String(limit));
+  const res = await fetch(u.toString(), { headers: buildAuthHeaders() });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as { items: Array<Record<string, unknown>> };
 }
 
 export async function listCases(input?: { limit?: number; site_id?: string }): Promise<CaseSummary[]> {
@@ -277,38 +297,6 @@ export async function getMetrics(): Promise<MetricsResponse> {
   const res = await fetch(url, { method: "GET", headers: buildAuthHeaders() });
   if (!res.ok) throw new Error(await readErrorMessage(res));
   return (await res.json()) as MetricsResponse;
-}
-
-export async function askDocs(question: string): Promise<DocsAnswer> {
-  const url = apiUrl("/docs/ask");
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...buildAuthHeaders(),
-    },
-    body: JSON.stringify({ question }),
-  });
-
-  // If backend endpoint isn't available yet, return a graceful mocked response.
-  if (!res.ok) {
-    return {
-      answer:
-        "Docs assistant is not connected yet. Next step: add a `/docs/ask` endpoint that uses PageIndex (tree-search) or Mongo RAG.\n\nFor now, this is a UI-only workflow with traceable citations.",
-      citations: [
-        {
-          id: "local-placeholder-1",
-          title: "Clinical workflow (placeholder)",
-          source: "docs/clinical-workflow.md",
-          snippet:
-            "Phase B (Shadow Mode): run silently alongside clinicians, log results with study_instance_uid/site_id, and collect feedback for retrospective validation.",
-          score: 0.91,
-        },
-      ],
-    };
-  }
-
-  return (await res.json()) as DocsAnswer;
 }
 
 export type PublicFeature = {
@@ -345,5 +333,96 @@ export async function fetchPublicFeatures(): Promise<FeaturesCatalogResponse | n
   } catch {
     return null;
   }
+}
+
+export type ReportDraftDoc = Record<string, unknown>;
+
+export async function createReportDraft(body: {
+  case_id: string;
+  template_id: string;
+  model_run?: Record<string, unknown>;
+  clinical_context?: Record<string, unknown>;
+  scanner_field_strength?: string;
+  prior_studies?: string;
+}): Promise<ReportDraftDoc> {
+  const res = await fetch(apiUrl("/report/draft"), {
+    method: "POST",
+    headers: { ...buildAuthHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as ReportDraftDoc;
+}
+
+export async function getReportDraft(reportId: string): Promise<ReportDraftDoc> {
+  const res = await fetch(apiUrl(`/report/${encodeURIComponent(reportId)}`), {
+    method: "GET",
+    headers: buildAuthHeaders(),
+  });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as ReportDraftDoc;
+}
+
+export async function patchReportDraftSection(
+  reportId: string,
+  sectionName: string,
+  body: Record<string, unknown>,
+): Promise<{ ok: boolean; version: number }> {
+  const res = await fetch(
+    apiUrl(`/report/${encodeURIComponent(reportId)}/section/${encodeURIComponent(sectionName)}`),
+    {
+      method: "PATCH",
+      headers: { ...buildAuthHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as { ok: boolean; version: number };
+}
+
+export async function regenerateReportDraftSection(
+  reportId: string,
+  sectionName: string,
+): Promise<{ ok: boolean; version: number }> {
+  const res = await fetch(
+    apiUrl(`/report/${encodeURIComponent(reportId)}/section/${encodeURIComponent(sectionName)}/regenerate`),
+    { method: "POST", headers: buildAuthHeaders() },
+  );
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as { ok: boolean; version: number };
+}
+
+export async function signReportDraft(
+  reportId: string,
+  body: {
+    signer_name: string;
+    signer_role: string;
+    npi_or_license?: string;
+    acknowledged_disclaimer: boolean;
+  },
+): Promise<{ ok: boolean; audit_id: string; text_hash: string; fhir_url: string; pdf_url: string }> {
+  const res = await fetch(apiUrl(`/report/${encodeURIComponent(reportId)}/sign`), {
+    method: "POST",
+    headers: { ...buildAuthHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as {
+    ok: boolean;
+    audit_id: string;
+    text_hash: string;
+    fhir_url: string;
+    pdf_url: string;
+  };
+}
+
+export function reportDraftPdfUrl(reportId: string): string {
+  return apiUrl(`/report/${encodeURIComponent(reportId)}/pdf`);
+}
+
+export async function fetchReportDraftPdfBlob(reportId: string): Promise<Blob> {
+  const res = await fetch(reportDraftPdfUrl(reportId), { method: "GET", headers: buildAuthHeaders() });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return res.blob();
 }
 

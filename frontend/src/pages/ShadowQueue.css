@@ -1,0 +1,251 @@
+/* Shadow queue — tokens from global.css only */
+
+.shadow-queue-page {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 16px 24px 48px;
+  padding-top: calc(var(--nav-outer-height, 52px) + 12px);
+}
+
+.sq-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.sq-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sq-phase {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--green-100);
+  color: var(--green-800);
+  border: 1px solid var(--line);
+}
+
+.sq-sub {
+  font-size: 14px;
+  color: var(--ink-soft);
+  margin-top: 6px;
+  max-width: 720px;
+  line-height: 1.55;
+}
+
+.sq-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 1100px) {
+  .sq-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.sq-kpi {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  min-height: 88px;
+}
+
+.sq-kpi-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-mute);
+  font-weight: 700;
+}
+
+.sq-kpi-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--ink);
+  margin-top: 6px;
+}
+
+.sq-kpi-sub {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-top: 4px;
+}
+
+.sq-live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  background: var(--green-600);
+}
+
+.sq-live-dot.stale {
+  background: var(--ink-soft);
+}
+
+.sq-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.sq-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sq-chip {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-mid);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sq-chip.active {
+  background: var(--green-700);
+  color: var(--white);
+  border-color: var(--green-700);
+}
+
+.sq-table-wrap {
+  overflow: auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.sq-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.sq-table th {
+  text-align: left;
+  padding: 10px 12px;
+  color: var(--ink-mute);
+  font-weight: 700;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.sq-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(216, 236, 228, 0.7);
+  vertical-align: middle;
+}
+
+.sq-row {
+  cursor: pointer;
+}
+
+.sq-row:hover {
+  background: var(--green-50);
+}
+
+.sq-row.flash {
+  animation: sq-flash 1.2s ease-out;
+}
+
+@keyframes sq-flash {
+  0% {
+    background: rgba(37, 196, 143, 0.22);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.sq-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: var(--ink-mid);
+}
+
+.sq-pill {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.sq-pill.queued,
+.sq-pill.processing {
+  background: var(--green-50);
+  color: var(--green-800);
+  border: 1px solid var(--line);
+}
+
+.sq-pill.review {
+  background: rgba(13, 21, 18, 0.06);
+  color: var(--ink-mid);
+  border: 1px solid var(--line);
+}
+
+.sq-pill.complete {
+  background: var(--green-100);
+  color: var(--green-900);
+  border: 1px solid var(--green-300);
+}
+
+.sq-pill.flagged {
+  background: rgba(13, 21, 18, 0.08);
+  color: var(--ink);
+  border: 1px solid rgba(13, 21, 18, 0.2);
+}
+
+.sq-pill.failed {
+  background: rgba(13, 21, 18, 0.12);
+  color: var(--ink);
+  border: 1px solid rgba(13, 21, 18, 0.28);
+}
+
+.sq-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.sq-icon-btn {
+  border: 1px solid var(--line);
+  background: var(--white);
+  border-radius: 10px;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ink-mid);
+}
+
+.sq-empty {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--ink-mute);
+}

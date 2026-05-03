@@ -1,0 +1,446 @@
+/* NeuroSight Docs Assistant — uses global.css :root tokens only */
+
+.docs-assistant {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px 24px 48px;
+  padding-top: calc(var(--nav-outer-height, 52px) + 16px);
+}
+
+.da-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.da-header h1 {
+  font-family: var(--sans);
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.da-header p {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  max-width: 640px;
+  margin-top: 6px;
+  line-height: 1.55;
+}
+
+.badge-pageindex {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--green-800);
+  background: var(--green-100);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+}
+
+.da-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .da-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.da-main-card,
+.da-cite-card,
+.da-kb-card {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(4, 28, 21, 0.08);
+  padding: 16px 18px;
+}
+
+.da-search-bar {
+  margin-bottom: 14px;
+}
+
+.da-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 4px 4px 4px 12px;
+  background: var(--white);
+}
+
+.da-input-wrap input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 10px 4px;
+  font-family: var(--sans);
+  font-size: 15px;
+  outline: none;
+  min-width: 0;
+}
+
+.da-ask-btn {
+  border: none;
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-weight: 700;
+  font-family: var(--sans);
+  cursor: pointer;
+  background: var(--green-600);
+  color: var(--white);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.da-ask-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.da-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.da-suggest {
+  font-size: 12px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-mid);
+  cursor: pointer;
+  font-family: var(--sans);
+}
+
+.da-suggest:hover {
+  border-color: var(--green-400);
+  color: var(--green-800);
+}
+
+.da-reasoning {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--green-50);
+  border: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+
+.da-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--line);
+  border-top-color: var(--green-600);
+  border-radius: 50%;
+  animation: da-spin 0.7s linear infinite;
+}
+
+@keyframes da-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.da-reasoning-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.da-reasoning-step {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-left: auto;
+}
+
+.da-answer-area {
+  min-height: 120px;
+}
+
+.da-empty {
+  text-align: center;
+  padding: 36px 16px;
+  color: var(--ink-mute);
+  font-size: 14px;
+}
+
+.da-error {
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(13, 21, 18, 0.04);
+  border: 1px solid var(--line);
+  color: var(--ink-mid);
+  font-size: 14px;
+}
+
+.da-error button {
+  margin-top: 10px;
+}
+
+.da-answer-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.da-confidence {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-mid);
+}
+
+.da-confidence-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.da-confidence.high .da-confidence-dot {
+  background: var(--green-600);
+}
+
+.da-confidence.med .da-confidence-dot {
+  background: var(--green-800);
+}
+
+.da-confidence.low .da-confidence-dot {
+  background: var(--ink-soft);
+}
+
+.da-tokens {
+  font-size: 12px;
+  color: var(--ink-mute);
+}
+
+.da-answer-text {
+  font-family: var(--serif);
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+.cite-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  margin: 0 2px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 800;
+  font-family: var(--sans);
+  border-radius: 6px;
+  border: 1px solid rgba(37, 196, 143, 0.45);
+  background: rgba(37, 196, 143, 0.1);
+  color: var(--green-700);
+  cursor: pointer;
+  vertical-align: super;
+}
+
+.cite-chip:hover {
+  background: var(--green-600);
+  color: var(--white);
+  border-color: var(--green-600);
+  transform: translateY(-1px);
+}
+
+.da-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.da-actions button.primary {
+  background: var(--green-600);
+  color: var(--white);
+  border: none;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--sans);
+}
+
+.da-actions button:not(.primary) {
+  border: 1px solid var(--line);
+  background: var(--white);
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: var(--sans);
+  color: var(--ink-mid);
+}
+
+.da-audit-id {
+  margin-left: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--ink-mute);
+}
+
+.da-right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.da-cite-head .da-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-mute);
+}
+
+.da-cite-head h3 {
+  font-size: 1rem;
+  margin-top: 4px;
+  color: var(--ink);
+}
+
+.da-cite-empty {
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.55;
+  margin-top: 8px;
+}
+
+.da-cite-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.da-cite-item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+  transition: background-color 1.2s ease;
+}
+
+.da-cite-item.cite-highlight {
+  background: rgba(37, 196, 143, 0.14);
+}
+
+.da-cite-head-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.da-cite-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: var(--green-100);
+  color: var(--green-800);
+  font-weight: 800;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.da-cite-source {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.da-cite-loc {
+  font-size: 11px;
+  color: var(--ink-mute);
+  margin-top: 2px;
+}
+
+.da-cite-snippet {
+  font-size: 12px;
+  color: var(--ink-mid);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+.da-cite-relevance {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--ink-mute);
+}
+
+.da-relevance-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line);
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.da-relevance-bar > div {
+  height: 100%;
+  background: var(--green-500);
+  border-radius: 999px;
+}
+
+.da-kb-card {
+  font-size: 13px;
+}
+
+.da-kb-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-mid);
+}
+
+.da-kb-row:last-child {
+  border-bottom: none;
+}
+
+.da-kb-live {
+  color: var(--green-700);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.da-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--ink-mute);
+  flex-shrink: 0;
+}

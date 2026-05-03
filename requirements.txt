@@ -24,6 +24,11 @@ streamlit>=1.28.0
 
 # Multimodal LLM (Gemini, etc.)
 google-generativeai>=0.3.0
+openai>=1.0.0
+
+# PageIndex (vectorless RAG) + PDF staging for clinical doc index
+pageindex>=0.2.8
+fpdf2>=2.7.0
 # Optional: openai, anthropic for other LLM backends
 
 # Visualization & interpretability
@@ -41,6 +46,8 @@ motor>=3.0.0
 # Dev / tests
 pytest>=7.4.0
 httpx>=0.25.0
+jinja2>=3.1.0
+weasyprint>=61.0
 
 # Utilities
 tqdm>=4.65.0

@@ -16,6 +16,9 @@ class MongoSettings:
     traces_collection: str
     trials_collection: str
     trial_candidates_collection: str
+    audit_log_collection: str
+    shadow_cases_collection: str
+    reports_collection: str
     enable: bool
 
 
@@ -37,6 +40,9 @@ def load_mongo_settings() -> MongoSettings:
         traces_collection=os.environ.get("MONGODB_COLLECTION_TRACES", "agent_traces"),
         trials_collection=os.environ.get("MONGODB_COLLECTION_TRIALS", "clinical_trials"),
         trial_candidates_collection=os.environ.get("MONGODB_COLLECTION_TRIAL_CANDIDATES", "trial_candidates"),
+        audit_log_collection=os.environ.get("MONGODB_COLLECTION_AUDIT_LOG", "audit_log"),
+        shadow_cases_collection=os.environ.get("MONGODB_COLLECTION_SHADOW_CASES", "shadow_cases"),
+        reports_collection=os.environ.get("MONGODB_COLLECTION_REPORTS", "report_drafts"),
         enable=enable,
     )
 

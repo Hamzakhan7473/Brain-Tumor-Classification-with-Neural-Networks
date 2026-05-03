@@ -19,6 +19,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# After setting PAGEINDEX_API_KEY, index clinical PDFs once per deploy (or use a Cloud Run job):
+#   docker run ... -e PAGEINDEX_API_KEY=... python scripts/index_clinical_docs.py
+
 # Default: run API
 ENV PYTHONPATH=/app
 EXPOSE 8000
