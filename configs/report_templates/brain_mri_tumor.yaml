@@ -1,0 +1,64 @@
+template_id: brain_mri_tumor
+name: "Brain MRI · Mass / Tumor screening (RSNA-derived)"
+modality: MR
+body_region: brain
+indication_default: "Brain MRI for mass or neoplasm evaluation."
+technique_default: |
+  MRI brain with and without contrast as clinically indicated. Sequences
+  include axial T1, T2, FLAIR, DWI, and post-contrast T1. Scanner field
+  strength {{scanner_field_strength}}.
+comparison_default: "No prior brain MRI available for comparison."
+
+finding_regions:
+  - id: mass_region
+    label: Supratentorial parenchyma
+    measurement_ids: [model_confidence, dominant_class_probability]
+    ai_prompt: |
+      In 1-2 sentences, summarize classifier output for a possible mass
+      signal pattern. Use ONLY the provided class probabilities and
+      confidence. Do not invent lesion size or location.
+    fallback: "No discrete mass identified on available sequences; correlate clinically."
+
+  - id: ventricles
+    label: Ventricles
+    measurement_ids: []
+    fallback: "Ventricles are normal in size and configuration."
+
+  - id: vasculature
+    label: Vasculature
+    measurement_ids: []
+    fallback: "No acute territorial infarct on DWI."
+
+impression_rules:
+  - condition: "dominant_class_probability < 0.55"
+    severity: normal
+    template: |
+      Low model confidence for a high-grade neoplastic pattern on this slice.
+      Correlate with full multiplanar review and clinical history.
+
+  - condition: "dominant_class_probability < 0.75"
+    severity: mild
+    template: |
+      Intermediate classifier signal ({{dominant_class_probability}}) for
+      the leading class **{{predicted_label}}**; recommend structured
+      neuroradiology read and correlation with full study.
+
+  - condition: "dominant_class_probability >= 0.75"
+    severity: moderate
+    template: |
+      Classifier favors **{{predicted_label}}** with probability
+      {{dominant_class_probability}} on the submitted slice — not a
+      definitive diagnosis; full MRI protocol review required.
+
+recommendation_rules:
+  - severity_in: [mild, moderate, severe]
+    text: "**Dedicated neuroradiology review** of the complete MRI including contrast phases if obtained [cite:aha_2024]."
+  - severity_in: [normal]
+    text: "**Routine clinical follow-up** at physician discretion."
+
+citations:
+  aha_2024:
+    label: "AHA/ASA Guidelines 2024"
+    source_type: guideline
+    location: "Section 4.3 · p. 28"
+    snippet: "Multidisciplinary review recommended when imaging suggests cerebrovascular or neoplastic risk."

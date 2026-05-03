@@ -1,0 +1,106 @@
+template_id: brain_mri_wmh_svd
+name: "Brain MRI · WMH / Small Vessel Disease (RSNA-derived)"
+modality: MR
+body_region: brain
+indication_default: "Cerebral small vessel disease evaluation."
+technique_default: |
+  MRI brain without contrast. Sequences include axial T1, T2, FLAIR,
+  DWI, and SWI. Performed on {{scanner_field_strength}} scanner.
+comparison_default: "No prior brain MRI available for comparison."
+
+finding_regions:
+  - id: white_matter
+    label: White matter
+    measurement_ids: [wmh_volume_cc, lesion_voxels]
+    ai_prompt: |
+      Describe the white matter findings in 1-2 sentences. Use the
+      provided WMH volume and voxel count. State whether the
+      distribution is symmetric, focal, or diffuse based on the
+      saliency map. Do not invent details not in the model output.
+    fallback: "White matter signal is unremarkable."
+
+  - id: ventricles
+    label: Ventricles
+    measurement_ids: []
+    ai_prompt: "State if ventricles are normal, dilated, or shifted."
+    fallback: "Ventricles are normal in size and configuration."
+
+  - id: cortex
+    label: Cortex
+    measurement_ids: []
+    fallback: "Cortical sulci appropriate for stated age. No mass effect."
+
+  - id: posterior_fossa
+    label: Posterior fossa
+    measurement_ids: []
+    fallback: "Brainstem and cerebellum unremarkable."
+
+  - id: vasculature
+    label: Vasculature
+    measurement_ids: []
+    fallback: "No acute infarct on DWI. No intracranial hemorrhage on SWI."
+
+  - id: other
+    label: Other
+    measurement_ids: []
+    fallback: "Paranasal sinuses and mastoid air cells are clear."
+
+impression_rules:
+  - condition: "wmh_volume_cc < 1.0"
+    severity: normal
+    template: |
+      No significant white matter hyperintensities detected.
+      WMH burden within expected range for age.
+
+  - condition: "wmh_volume_cc < 5.0"
+    severity: mild
+    fazekas_grade: 1
+    template: |
+      Scattered punctate white matter hyperintensities measuring
+      {{wmh_volume_cc}} cc total, consistent with mild small vessel
+      disease. **Fazekas-equivalent grade {{fazekas_grade}}** [cite:fazekas].
+
+  - condition: "wmh_volume_cc < 15.0"
+    severity: moderate
+    fazekas_grade: 2
+    template: |
+      Moderate cerebral small vessel disease, with confluent
+      periventricular and deep white matter hyperintensities measuring
+      {{wmh_volume_cc}} cc total. **Fazekas-equivalent grade {{fazekas_grade}}**
+      [cite:fazekas].
+
+  - condition: "wmh_volume_cc >= 15.0"
+    severity: severe
+    fazekas_grade: 3
+    template: |
+      Severe cerebral small vessel disease with confluent
+      periventricular and deep white matter hyperintensities measuring
+      {{wmh_volume_cc}} cc total. **Fazekas-equivalent grade {{fazekas_grade}}**
+      [cite:fazekas].
+
+recommendation_rules:
+  - severity_in: [moderate, severe]
+    text: "**Vascular risk review** — referring physician evaluation of blood pressure control, statin therapy candidacy, and modifiable cerebrovascular risk factors [cite:aha_2024]."
+  - severity_in: [moderate, severe]
+    text: "**Neurology consultation** if cognitive symptoms persist or progress."
+  - severity_not: [normal]
+    text: "**Follow-up MRI in 12 months** for longitudinal lesion burden tracking."
+  - severity_in: [normal]
+    text: "**Routine follow-up** at clinical discretion."
+
+citations:
+  fazekas:
+    label: "Fazekas et al. 1987"
+    source_type: paper
+    location: "AJNR · Section 2 · p. 351"
+    snippet: "Periventricular hyperintensities graded as 0 (absent) through 3 (irregular periventricular signal extending into deep white matter)."
+  aha_2024:
+    label: "AHA/ASA Guidelines 2024"
+    source_type: guideline
+    location: "Section 4.3 · p. 28"
+    snippet: "Statin therapy and BP optimization recommended for patients with imaging evidence of covert cerebrovascular disease."
+  adni_norms:
+    label: "ADNI normative table"
+    source_type: measurement
+    location: "CN cohort · age-matched"
+    snippet: "Percentile derived from cognitively normal cohort distribution."

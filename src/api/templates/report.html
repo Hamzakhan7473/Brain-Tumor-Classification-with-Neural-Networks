@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Radiology report {{ report.report_id }}</title>
+  <style>
+    @page { margin: 14mm; }
+    body { font-family: Georgia, "Times New Roman", serif; font-size: 11pt; color: #111; }
+    h1 { font-size: 16pt; margin: 0 0 8pt 0; }
+    .meta { font-size: 10pt; color: #333; margin-bottom: 12pt; }
+    h2 { font-size: 11pt; text-transform: uppercase; letter-spacing: 0.04em; color: #0f6e45; margin: 14pt 0 6pt 0; border-bottom: 1px solid #d8ece4; }
+    .pill { display: inline-block; font-family: ui-monospace, monospace; font-size: 9pt; padding: 2px 6px; margin: 2px; border-radius: 4px; background: #e1f5ee; }
+    .finding-row { margin: 8pt 0; }
+    .finding-label { font-weight: 700; width: 22%; vertical-align: top; display: inline-block; }
+    .finding-text { width: 76%; display: inline-block; vertical-align: top; }
+    ol.impression li { margin: 6pt 0; }
+    .disclaimer { margin-top: 18pt; padding: 8pt; border: 1px solid #d8ece4; font-size: 9pt; color: #2a3d35; }
+    .signblock { margin-top: 14pt; font-size: 10pt; }
+  </style>
+</head>
+<body>
+  <h1>Structured radiology report</h1>
+  <div class="meta">
+    Report ID: {{ report.report_id }} · Study: {{ report.study_uid }} · Template: {{ report.template_id }} · Status: {{ report.status }}
+  </div>
+
+  {% for s in report.sections %}
+    <h2>{{ s.name }}</h2>
+    {% if s.text %}
+      <div style="white-space:pre-wrap">{{ s.text | e }}</div>
+    {% endif %}
+    {% if s.findings %}
+      {% for f in s.findings %}
+        <div class="finding-row">
+          <span class="finding-label">{{ f.region | e }}</span>
+          <span class="finding-text">{{ f.text | e }}</span>
+        </div>
+      {% endfor %}
+    {% endif %}
+    {% if s.impressions %}
+      <ol class="impression">
+        {% for im in s.impressions | sort(attribute='order') %}
+          <li>{{ im.text | e }}</li>
+        {% endfor %}
+      </ol>
+    {% endif %}
+  {% endfor %}
+
+  <h2>Measurements</h2>
+  {% for m in report.measurements %}
+    <span class="pill">{{ m.label | e }}: {{ m.value }} {{ m.unit or '' }}</span>
+  {% endfor %}
+
+  <h2>Citations</h2>
+  <ol>
+    {% for c in report.citations %}
+      <li><strong>{{ c.label | e }}</strong> — {{ (c.location or '') | e }} · {{ (c.snippet or '') | e }}</li>
+    {% endfor %}
+  </ol>
+
+  <div class="signblock">
+    {% if report.signed_at %}
+      Electronically signed: {{ report.signed_at | e }} · Signer: {{ report.signed_by | e }}
+    {% else %}
+      <em>Unsigned draft</em>
+    {% endif %}
+  </div>
+
+  <div class="disclaimer">{{ report.disclaimer | e }}</div>
+  <p style="margin-top:10pt;font-size:8pt;color:#444;">Audit {{ footer_audit | e }} · SHA-256 {{ footer_hash | e }}</p>
+</body>
+</html>

@@ -1,0 +1,36 @@
+template_id: brain_mri_generic
+name: "Brain MRI · General structured draft"
+modality: MR
+body_region: brain
+indication_default: "Clinical brain MRI indication as provided."
+technique_default: |
+  MRI brain per protocol. Field strength {{scanner_field_strength}}.
+comparison_default: "Comparison per available priors."
+
+finding_regions:
+  - id: overview
+    label: Overview
+    measurement_ids: [model_confidence]
+    ai_prompt: |
+      One or two sentences summarizing model output using only provided
+      labels and confidence. No invented measurements.
+    fallback: "Automated model output available; full structured read pending."
+
+impression_rules:
+  - condition: "model_confidence < 0.5"
+    severity: normal
+    template: |
+      Model confidence is limited on this input; defer to full
+      radiologist interpretation.
+
+  - condition: "model_confidence >= 0.5"
+    severity: mild
+    template: |
+      Model output (confidence {{model_confidence}}) should be integrated
+      with complete imaging and history.
+
+recommendation_rules:
+  - severity_in: [normal, mild, moderate, severe]
+    text: "**Final interpretation** by a qualified radiologist is required before clinical use."
+
+citations: {}

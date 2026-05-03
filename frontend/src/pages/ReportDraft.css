@@ -1,0 +1,187 @@
+/* Uses global.css :root tokens only — no new palette literals. */
+.report-draft-banner {
+  position: sticky;
+  top: var(--nav-outer-height);
+  z-index: 20;
+  padding: 10px 16px;
+  background: color-mix(in srgb, var(--green-50) 92%, var(--white));
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--ink-mid);
+}
+.report-draft-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin-bottom: 16px;
+}
+.report-draft-tag {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--green-100);
+  color: var(--green-800);
+}
+.report-draft-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 960px) {
+  .report-draft-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.report-draft-card {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.report-draft-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.report-draft-section {
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.report-draft-section:last-child {
+  border-bottom: none;
+}
+.report-draft-section-title {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--green-600);
+  margin-bottom: 6px;
+}
+.report-draft-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.report-draft-editable {
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.55;
+  min-height: 2.5em;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  outline: none;
+  border: 1px solid transparent;
+}
+.report-draft-editable:focus {
+  border-color: var(--green-500);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green-300) 55%, transparent);
+}
+.report-draft-finding-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+@media (max-width: 640px) {
+  .report-draft-finding-row {
+    grid-template-columns: 1fr;
+  }
+}
+.report-draft-impression ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  counter-reset: imp;
+}
+.report-draft-impression li {
+  counter-increment: imp;
+  position: relative;
+  padding-left: 36px;
+  margin: 10px 0;
+  min-height: 28px;
+}
+.report-draft-impression li::before {
+  content: counter(imp);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--green-600);
+  color: var(--white);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.report-draft-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 25;
+  margin-top: 20px;
+  padding: 12px 16px;
+  background: color-mix(in srgb, var(--surface) 88%, var(--white));
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+.report-draft-btn {
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  font-weight: 700;
+  font-size: 14px;
+  background: var(--green-600);
+  color: var(--white);
+}
+.report-draft-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.report-draft-btn-ghost {
+  background: transparent;
+  color: var(--green-700);
+  border: 1px solid var(--line);
+}
+.report-draft-modal-back {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 46, 28, 0.35);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.report-draft-modal {
+  max-width: 520px;
+  width: 100%;
+  max-height: 90vh;
+  overflow: auto;
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 20px;
+  border: 1px solid var(--line);
+}

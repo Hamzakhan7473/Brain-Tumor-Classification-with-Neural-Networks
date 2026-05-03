@@ -13,6 +13,7 @@ import ShadowQueue from "./pages/ShadowQueue";
 import OpsMonitor from "./pages/OpsMonitor";
 import FeedbackAssignment from "./pages/FeedbackAssignment";
 import ReportComposer from "./pages/ReportComposer";
+import ReportDraft from "./pages/ReportDraft";
 import SafetyEscalation from "./pages/SafetyEscalation";
 import WorklistIntegration from "./pages/WorklistIntegration";
 import ResultPushStatus from "./pages/ResultPushStatus";
@@ -142,6 +143,22 @@ function App() {
         element={
           <AppShell>
             <ReportComposer />
+          </AppShell>
+        }
+      />
+      <Route
+        path="/report-draft/:reportId/signed"
+        element={
+          <AppShell>
+            <ReportDraft />
+          </AppShell>
+        }
+      />
+      <Route
+        path="/report-draft/:reportId"
+        element={
+          <AppShell>
+            <ReportDraft />
           </AppShell>
         }
       />

@@ -97,6 +97,126 @@ def audit_record_exists(audit_id: str) -> bool:
     return False
 
 
+def log_shadow_workflow_event(
+    *,
+    event_type: str,
+    user_id: Optional[str],
+    payload: dict,
+) -> str:
+    """
+    Append-only JSONL audit for shadow queue lifecycle (ingest, inference, feedback, export, …).
+    Returns a 16-char audit_id (not the same schema as image inference audit_id).
+    """
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    audit_id = hashlib.sha256(f"{timestamp}{event_type}{json.dumps(payload, sort_keys=True, default=str)}".encode()).hexdigest()[:16]
+    record = {
+        "audit_id": audit_id,
+        "timestamp_utc": timestamp,
+        "event_type": event_type,
+        "user_id": user_id,
+        "payload": payload,
+        "schema_version": "1.0",
+    }
+    log_path = _audit_dir() / "shadow_workflow.jsonl"
+    with open(log_path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, default=str) + "\n")
+    return audit_id
+
+
+def log_report_draft_event(
+    *,
+    event_type: str,
+    user_id: Optional[str],
+    payload: dict,
+) -> str:
+    """
+    Append-only JSONL audit for structured report drafts (create, edit, sign, …).
+    Returns a 16-char audit_id (distinct from image-inference audit_id).
+    """
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    audit_id = hashlib.sha256(
+        f"{timestamp}{event_type}{json.dumps(payload, sort_keys=True, default=str)}".encode()
+    ).hexdigest()[:16]
+    record = {
+        "audit_id": audit_id,
+        "timestamp_utc": timestamp,
+        "event_type": event_type,
+        "user_id": user_id,
+        "payload": payload,
+        "schema_version": "1.0",
+    }
+    log_path = _audit_dir() / "report_draft.jsonl"
+    with open(log_path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, default=str) + "\n")
+    return audit_id
+
+
+def log_clinical_feedback_audit(
+    *,
+    event_type: str,
+    user_id: Optional[str],
+    payload: dict,
+) -> str:
+    """Append-only JSONL for structured clinical feedback (immutable audit trail)."""
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    audit_id = hashlib.sha256(
+        f"{timestamp}{event_type}{json.dumps(payload, sort_keys=True, default=str)}".encode()
+    ).hexdigest()[:16]
+    record = {
+        "audit_id": audit_id,
+        "timestamp_utc": timestamp,
+        "event_type": event_type,
+        "user_id": user_id,
+        "payload": payload,
+        "schema_version": "1.0",
+    }
+    log_path = _audit_dir() / "clinical_feedback_structured.jsonl"
+    with open(log_path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, default=str) + "\n")
+    return audit_id
+
+
+def log_docs_assistant_query(
+    *,
+    user_id: Optional[str],
+    question: str,
+    doc_filter: Optional[list],
+    answer_hash: str,
+    citation_count: int,
+    confidence: str,
+    engine: str,
+) -> tuple[str, str]:
+    """
+    Append a docs assistant query record (JSONL). Returns (audit_id, timestamp_utc).
+    Answer text is never stored — only ``answer_hash``. Question is stored for traceability (max 500 chars).
+    """
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    qhash = hashlib.sha256(question.encode("utf-8")).hexdigest()[:16]
+    audit_id = hashlib.sha256(f"{timestamp}{qhash}{engine}".encode()).hexdigest()[:16]
+
+    record = {
+        "audit_id": audit_id,
+        "timestamp_utc": timestamp,
+        "event_type": "docs_query",
+        "user_id": user_id,
+        "engine": engine,
+        "payload": {
+            "question": (question[:500] + "…") if len(question) > 500 else question,
+            "question_sha16": qhash,
+            "doc_filter": doc_filter,
+            "answer_hash": answer_hash,
+            "citation_count": citation_count,
+            "confidence": confidence,
+        },
+        "schema_version": "1.0",
+    }
+    log_path = _audit_dir() / "docs_assistant.jsonl"
+    with open(log_path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, default=str) + "\n")
+
+    return audit_id, timestamp
+
+
 def append_signoff_event(
     audit_id: str,
     event: str,

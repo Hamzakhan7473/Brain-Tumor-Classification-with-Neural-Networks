@@ -1,0 +1,56 @@
+template_id: brain_mri_stroke
+name: "Brain MRI · Acute stroke / infarct screening (RSNA-derived)"
+modality: MR
+body_region: brain
+indication_default: "MRI brain for acute neurologic deficit / stroke evaluation."
+technique_default: |
+  MRI brain including DWI, ADC, FLAIR, GRE/SWI, and intracranial MRA as
+  available. Field strength {{scanner_field_strength}}.
+comparison_default: "No prior brain MRI available for comparison."
+
+finding_regions:
+  - id: diffusion
+    label: Diffusion-weighted imaging
+    measurement_ids: [model_confidence]
+    ai_prompt: |
+      One sentence on whether the classifier suggests an acute infarct
+      pattern on the provided slice, using only the stated confidence.
+    fallback: "DWI reviewed; correlate for acute infarct with full series."
+
+  - id: hemorrhage
+    label: Hemorrhage / blood products
+    measurement_ids: []
+    fallback: "GRE/SWI reviewed for blood products; full series correlation required."
+
+  - id: vasculature
+    label: Vasculature
+    measurement_ids: []
+    fallback: "Vascular imaging correlation per clinical protocol."
+
+impression_rules:
+  - condition: "model_confidence_raw < 0.6"
+    severity: normal
+    template: |
+      No high-confidence acute infarct pattern identified on the submitted
+      slice; urgent clinical correlation and full DWI series remain
+      essential.
+
+  - condition: "model_confidence_raw >= 0.6"
+    severity: moderate
+    template: |
+      Elevated classifier confidence ({{model_confidence_raw}}) for an acute
+      pattern on the submitted slice — **not** a substitute for attending
+      interpretation of the complete MRI.
+
+recommendation_rules:
+  - severity_in: [moderate, severe]
+    text: "**Stroke team activation** per institutional protocol when clinical suspicion is high [cite:aha_2024]."
+  - severity_in: [normal, mild]
+    text: "**Complete MRI and clinical correlation** before disposition."
+
+citations:
+  aha_2024:
+    label: "AHA/ASA Guidelines 2024"
+    source_type: guideline
+    location: "Stroke imaging pathways"
+    snippet: "Acute neuroimaging decisions require integration of clinical deficit and full MRI sequences."
