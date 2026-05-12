@@ -79,10 +79,12 @@ function CasePicker({ onPick }: { onPick: (uid: string) => void }) {
   const [rows, setRows] = useState<Array<Record<string, unknown>>>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
+      setLoading(true);
       setErr(null);
       try {
         const p = new URLSearchParams();
@@ -101,14 +103,19 @@ function CasePicker({ onPick }: { onPick: (uid: string) => void }) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [reloadToken]);
 
   if (loading) return <FeedbackSkeleton />;
   if (err) {
     return (
       <div className="container" style={{ marginTop: 16 }}>
         <p style={{ color: "var(--green-900)" }}>{err}</p>
-        <Link to="/dashboard">Back to dashboard</Link>
+        <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+          <IosButton variant="secondary" size="md" onClick={() => setReloadToken((n) => n + 1)}>
+            Refresh list
+          </IosButton>
+          <Link to="/dashboard">Back to dashboard</Link>
+        </div>
       </div>
     );
   }
@@ -130,9 +137,14 @@ function CasePicker({ onPick }: { onPick: (uid: string) => void }) {
 
   return (
     <div className="container" style={{ marginTop: 16, maxWidth: 720 }}>
-      <h2 className="text-ios-title2" style={{ marginBottom: 12 }}>
-        Choose a case to review
-      </h2>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <h2 className="text-ios-title2" style={{ marginBottom: 12 }}>
+          Choose a case to review
+        </h2>
+        <IosButton variant="secondary" size="sm" disabled={loading} onClick={() => setReloadToken((n) => n + 1)}>
+          {loading ? "Loading…" : "Refresh"}
+        </IosButton>
+      </div>
       <p className="text-ios-footnote" style={{ color: "var(--ink-mute)", marginBottom: 14 }}>
         Pending shadow-queue cases (feedback = pending).
       </p>
@@ -145,6 +157,7 @@ function CasePicker({ onPick }: { onPick: (uid: string) => void }) {
               <button
                 type="button"
                 className="card"
+                aria-label={`Open case ${uid}`}
                 style={{
                   width: "100%",
                   textAlign: "left",
@@ -231,6 +244,8 @@ function VerdictPicker({ value, onChange }: { value: Verdict | null; onChange: (
       <button
         type="button"
         key={v}
+        aria-pressed={sel}
+        aria-label={label}
         onClick={() => onChange(v)}
         style={{
           flex: 1,
@@ -253,7 +268,7 @@ function VerdictPicker({ value, onChange }: { value: Verdict | null; onChange: (
     );
   }
   return (
-    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+    <div role="group" aria-label="Verdict" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
       {btn("agree", "Agree", "Model matches your read", "✓")}
       {btn("partial", "Partially", "Mostly right with material caveats", "◐")}
       {btn("disagree", "Disagree", "Wrong finding or severity", "✕")}
@@ -283,6 +298,7 @@ export default function ClinicalFeedback() {
   const [recent, setRecent] = useState<Array<Record<string, unknown>>>([]);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [countdown, setCountdown] = useState<number>(0);
+  const [caseTimerTick, setCaseTimerTick] = useState(0);
   const openedAt = useRef(Date.now());
   const notesRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -301,6 +317,7 @@ export default function ClinicalFeedback() {
     setNotes("");
     setDone(null);
     openedAt.current = Date.now();
+    setCaseTimerTick(0);
     try {
       const payload = await getCase(caseId);
       const review = payload?.case_review as CaseReview | undefined;
@@ -334,6 +351,13 @@ export default function ClinicalFeedback() {
   }, [caseId, done]);
 
   const isReadOnly = Boolean(cr?.feedback?.status && cr.feedback.status === "submitted");
+
+  useEffect(() => {
+    if (!cr || isReadOnly || done) return;
+    const id = window.setInterval(() => setCaseTimerTick((t) => t + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [cr, isReadOnly, done]);
+
   const classKeys = useMemo(() => Object.keys(cr?.model_run.class_probabilities || {}), [cr]);
 
   const canSubmit = useMemo(() => {
@@ -388,6 +412,33 @@ export default function ClinicalFeedback() {
     return () => window.clearInterval(iv);
   }, [done, fromQueue, pickNextFromQueue]);
 
+  const handleSubmit = useCallback(async () => {
+    if (!canSubmit || !cr || !caseId || verdict == null) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const groundTruth =
+        verdict === "agree"
+          ? null
+          : cr.task === "classification"
+            ? { class: gtClass }
+            : { severity: gtSev };
+      const out = await submitStructuredClinicalFeedback({
+        case_id: cr.case_id,
+        verdict,
+        ground_truth: groundTruth,
+        error_categories: Array.from(errors),
+        clinical_notes: notes.trim() || null,
+        time_spent_s: Math.floor((Date.now() - openedAt.current) / 1000),
+      });
+      setDone({ feedback_id: out.feedback_id, audit_id: out.audit_id });
+    } catch (ex) {
+      setError(formatApiConnectionHint(ex instanceof Error ? ex.message : String(ex)));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [canSubmit, cr, caseId, verdict, gtClass, gtSev, errors, notes]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) {
@@ -416,34 +467,12 @@ export default function ClinicalFeedback() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [canSubmit, submitting, isReadOnly, navigate, fromQueue, cr, verdict, classKeys]);
+  }, [canSubmit, submitting, isReadOnly, navigate, fromQueue, cr, verdict, classKeys, handleSubmit]);
 
-  async function handleSubmit() {
-    if (!canSubmit || !cr || !caseId || verdict == null) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const groundTruth =
-        verdict === "agree"
-          ? null
-          : cr.task === "classification"
-            ? { class: gtClass }
-            : { severity: gtSev };
-      const out = await submitStructuredClinicalFeedback({
-        case_id: cr.case_id,
-        verdict,
-        ground_truth: groundTruth,
-        error_categories: Array.from(errors),
-        clinical_notes: notes.trim() || null,
-        time_spent_s: Math.floor((Date.now() - openedAt.current) / 1000),
-      });
-      setDone({ feedback_id: out.feedback_id, audit_id: out.audit_id });
-    } catch (ex) {
-      setError(formatApiConnectionHint(ex instanceof Error ? ex.message : String(ex)));
-    } finally {
-      setSubmitting(false);
-    }
-  }
+  const secondsOnCase = useMemo(
+    () => Math.floor((Date.now() - openedAt.current) / 1000),
+    [caseTimerTick, cr?.case_id],
+  );
 
   if (!caseId) {
     return (
@@ -475,7 +504,10 @@ export default function ClinicalFeedback() {
         <ShadowModeBanner />
         <h2 className="text-ios-title2">Could not load case</h2>
         <p style={{ color: "var(--green-900)", marginTop: 8, whiteSpace: "pre-wrap" }}>{error || "Case not found"}</p>
-        <div style={{ marginTop: 12 }}>
+        <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <IosButton variant="primary" size="md" onClick={() => void loadCase()}>
+            Try again
+          </IosButton>
           <IosButton variant="secondary" size="md" onClick={() => navigate("/dashboard")}>
             Back to dashboard
           </IosButton>
@@ -704,7 +736,7 @@ export default function ClinicalFeedback() {
                 Skip
               </IosButton>
               <span className="text-ios-caption1" style={{ color: "var(--ink-mute)", marginLeft: "auto" }}>
-                Time on case: {Math.floor((Date.now() - openedAt.current) / 1000)}s
+                Time on case: {secondsOnCase}s
               </span>
             </div>
           </div>
@@ -771,6 +803,7 @@ export default function ClinicalFeedback() {
       <button
         type="button"
         title="Keyboard shortcuts"
+        aria-label="Keyboard shortcuts"
         onClick={() => setShortcutsOpen(true)}
         style={{
           position: "fixed",
@@ -807,9 +840,13 @@ export default function ClinicalFeedback() {
             className="card"
             style={{ maxWidth: 420, width: "100%" }}
             role="dialog"
+            aria-modal="true"
+            aria-labelledby="clinical-feedback-shortcuts-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ fontWeight: 800, marginBottom: 8 }}>Shortcuts</div>
+            <div id="clinical-feedback-shortcuts-title" style={{ fontWeight: 800, marginBottom: 8 }}>
+              Shortcuts
+            </div>
             <ul className="text-ios-footnote" style={{ color: "var(--ink-soft)", paddingLeft: 18, lineHeight: 1.6 }}>
               <li>A — Agree</li>
               <li>P — Partially</li>

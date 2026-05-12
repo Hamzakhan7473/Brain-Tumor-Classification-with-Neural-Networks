@@ -553,15 +553,9 @@ async def list_recent_structured_feedback(user_id: str, limit: int = 10) -> List
 
 async def search_rag_chunks(query_embedding: List[float], top_k: int = 5) -> List[Dict[str, Any]]:
     """
-    Placeholder for MongoDB Atlas Vector Search retrieval.
-    Full implementation is added in the RAG todo.
+    Atlas vector retrieval for precomputed embeddings (same pipeline as ``src.rag``).
     """
-    db = get_motor_database()
-    settings = load_mongo_settings()
-    if db is None or not settings.enable:
-        return []
+    from src.rag.vector_store import search_rag
 
-    # Atlas Vector Search is configured via an aggregation pipeline.
-    # We'll implement the real pipeline in `src/rag/` later.
-    return []
+    return await search_rag(query_embedding=query_embedding, top_k=top_k)
 
