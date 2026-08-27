@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import EvidenceDrawer, { EvidenceCitation } from "../components/EvidenceDrawer";
+import { AppPage } from "../components/layout/AppPage";
+import { IosButton } from "../components/ui/IosButton";
 
 const mockCitations: EvidenceCitation[] = [
   {
@@ -31,57 +33,47 @@ export default function InboxDetail() {
   }
 
   return (
-    <div className="container">
-      <h2 style={{ marginTop: 16 }}>Inbox message · demo</h2>
-      <p style={{ color: "var(--ink-mute)", marginTop: 4 }}>
-        Review an AI-drafted reply with policy-backed guardrails, similar to how you review imaging reports.
-      </p>
-
-      <div className="grid2" style={{ marginTop: 14 }}>
+    <AppPage
+      title="Inbox message"
+      subtitle="Review an AI-drafted reply with policy-backed guardrails, similar to how you review imaging reports."
+    >
+      <div className="app-grid-2">
         <div className="card">
-          <div style={{ fontWeight: 800 }}>Structured context</div>
-          <div style={{ marginTop: 8, fontSize: 13, color: "var(--ink-mute)" }}>
+          <div className="app-card-title">Structured context</div>
+          <div className="app-text-muted" style={{ marginTop: 8, fontSize: 13 }}>
             <div>Patient: Jane D. (MRN 12345)</div>
             <div>Subject: MRI appointment prep question</div>
             <div>Type: Clinical · Risk: low</div>
           </div>
-          <div
-            style={{
-              marginTop: 10,
-              borderRadius: 12,
-              border: "1px solid var(--line)",
-              padding: 10,
-              fontSize: 13,
-            }}
-          >
+          <div className="card app-card--warn" style={{ marginTop: 10, padding: 12, fontSize: 13 }}>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>Patient message</div>
-            <p style={{ color: "var(--ink)" }}>
+            <p>
               “Hi, I have an MRI scheduled next week. Should I stop my usual medications or not eat beforehand?”
             </p>
           </div>
         </div>
 
         <div className="card">
-          <div style={{ fontWeight: 800 }}>Draft reply</div>
-          <p style={{ marginTop: 6, fontSize: 13, color: "var(--ink-mute)" }}>
-            Draft text should be grounded in chart + org policies. This is a static placeholder wired to the evidence drawer.
+          <div className="app-card-title">Draft reply</div>
+          <p className="app-card-sub">
+            Draft text should be grounded in chart + org policies. Static placeholder wired to the evidence drawer.
           </p>
           <textarea
             rows={8}
             defaultValue={
               "Thanks for your message.\n\nFor your upcoming brain MRI, you can continue your usual medications unless your ordering clinician has advised otherwise. You may eat and drink normally unless you were given specific fasting instructions for sedation or contrast.\n\nIf you have kidney problems, are pregnant, or develop new or worsening symptoms such as severe headache, weakness, or changes in vision, please contact our office or nurse triage line.\n\nThis message does not replace emergency care. If you develop severe or sudden symptoms, seek urgent care or the emergency department."
             }
-            style={{ marginTop: 10 }}
+            style={{ marginTop: 10, width: "100%" }}
           />
 
-          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="btn" type="button" onClick={() => setDrawerOpen(true)}>
+          <div style={{ marginTop: 10 }}>
+            <IosButton variant="secondary" onClick={() => setDrawerOpen(true)}>
               View policy evidence
-            </button>
+            </IosButton>
           </div>
 
-          <div style={{ marginTop: 12, fontSize: 13, color: "var(--ink)" }}>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>Safety checklist</div>
+          <div style={{ marginTop: 12, fontSize: 13 }}>
+            <div className="app-card-title" style={{ marginBottom: 6 }}>Safety checklist</div>
             <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 4 }}>
               <input type="checkbox" checked={check1} onChange={(e) => setCheck1(e.target.checked)} />
               <span>Reviewed for red-flag symptoms and escalated to phone/ED pathways if present.</span>
@@ -92,10 +84,10 @@ export default function InboxDetail() {
             </label>
           </div>
 
-          <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-            <button className="btnPrimary" type="button" disabled={!(check1 && check2)} onClick={onApprove}>
+          <div style={{ marginTop: 12 }}>
+            <IosButton variant="primary" disabled={!(check1 && check2)} onClick={onApprove}>
               Approve &amp; send
-            </button>
+            </IosButton>
           </div>
         </div>
       </div>
@@ -106,7 +98,6 @@ export default function InboxDetail() {
         title="Inbox policies"
         citations={mockCitations}
       />
-    </div>
+    </AppPage>
   );
 }
-

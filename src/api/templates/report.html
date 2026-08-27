@@ -47,8 +47,58 @@
   {% endfor %}
 
   <h2>Measurements</h2>
+  {% set regional_ids = ['wmh_volume_periventricular_cc', 'wmh_volume_deep_subcortical_cc', 'wmh_volume_infratentorial_cc'] %}
+  {% set ns = namespace(found=false) %}
   {% for m in report.measurements %}
+    {% if m.id in regional_ids %}{% set ns.found = true %}{% endif %}
+  {% endfor %}
+  {% if ns.found %}
+  <table style="width:100%; border-collapse:collapse; margin:8pt 0 12pt 0; font-size:10pt;">
+    <thead>
+      <tr style="background:#e1f5ee; text-align:left;">
+        <th style="padding:4pt 6pt; border:1px solid #d8ece4;">Region</th>
+        <th style="padding:4pt 6pt; border:1px solid #d8ece4;">Volume</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in report.measurements %}
+        {% if m.id == 'wmh_volume_cc' or m.id in regional_ids %}
+        <tr>
+          <td style="padding:4pt 6pt; border:1px solid #d8ece4;">{{ m.label | e }}</td>
+          <td style="padding:4pt 6pt; border:1px solid #d8ece4;">{{ m.value }} {{ m.unit or '' }}</td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  <p style="font-size:8pt; color:#555; margin-top:0;">Regional volumes: geometric heuristic (research prototype; not atlas-registered).</p>
+  {% endif %}
+  {% set lon_ids = ['wmh_volume_delta_cc', 'wmh_volume_pct_change', 'wmh_volume_prior_cc'] %}
+  {% set ns_lon = namespace(found=false) %}
+  {% for m in report.measurements %}
+    {% if m.id in lon_ids %}{% set ns_lon.found = true %}{% endif %}
+  {% endfor %}
+  {% if ns_lon.found %}
+  <h2 style="margin-top:14pt;">Longitudinal comparison</h2>
+  <table style="width:100%; border-collapse:collapse; margin:8pt 0 12pt 0; font-size:10pt;">
+    <tbody>
+      {% for m in report.measurements %}
+        {% if m.id in lon_ids %}
+        <tr>
+          <td style="padding:4pt 6pt; border:1px solid #d8ece4; width:55%;">{{ m.label | e }}</td>
+          <td style="padding:4pt 6pt; border:1px solid #d8ece4;">{{ m.value }} {{ m.unit or '' }}</td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% for m in report.measurements %}
+    {% if not ns.found or (m.id != 'wmh_volume_cc' and m.id not in regional_ids) %}
+    {% if not ns_lon.found or m.id not in lon_ids %}
     <span class="pill">{{ m.label | e }}: {{ m.value }} {{ m.unit or '' }}</span>
+    {% endif %}
+    {% endif %}
   {% endfor %}
 
   <h2>Citations</h2>

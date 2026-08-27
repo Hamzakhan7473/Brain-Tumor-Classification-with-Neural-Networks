@@ -1,0 +1,800 @@
+/**
+ * 2026 in-app design — neutral zinc palette, black CTAs, soft bento surfaces.
+ * Scoped to `.app-modern` (AppShell routes).
+ */
+
+.app-modern {
+  --modern-bg: #f4f4f5;
+  --modern-surface: #ffffff;
+  --modern-ink: #09090b;
+  --modern-ink-soft: #3f3f46;
+  --modern-muted: #71717a;
+  --modern-border: #e4e4e7;
+  --modern-border-strong: #d4d4d8;
+  --modern-hover: #f4f4f5;
+  --modern-primary: #09090b;
+  --modern-primary-hover: #27272a;
+  --modern-radius: 14px;
+  --modern-radius-lg: 20px;
+  --modern-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --modern-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 0, 0, 0.06);
+  --modern-shadow-lg: 0 24px 48px rgba(0, 0, 0, 0.08);
+  --glass-surface: rgba(255, 255, 255, 0.62);
+  --glass-surface-strong: rgba(255, 255, 255, 0.78);
+  --glass-border: rgba(255, 255, 255, 0.72);
+  --glass-blur: blur(24px) saturate(1.35);
+  min-height: 100dvh;
+  /* Aurora backdrop is dark — veil lifts it to a pastel wash so dark ink stays readable */
+  background:
+    linear-gradient(rgba(247, 249, 252, 0.55), rgba(247, 249, 252, 0.62)),
+    url("/glass-backdrop.png") center / cover no-repeat fixed var(--modern-bg);
+  color: var(--modern-ink);
+}
+
+.app-modern .page {
+  padding-top: calc(var(--nav-outer-height) + 20px);
+}
+
+.app-modern nav {
+  background: rgba(255, 255, 255, 0.78);
+  border-bottom: 1px solid var(--modern-border);
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+}
+
+.app-modern .nav-logo-text {
+  font-family: var(--sans);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--modern-ink);
+}
+
+.app-modern .nav-logo-text span {
+  color: var(--modern-muted);
+  font-style: normal;
+  font-weight: 500;
+}
+
+.app-modern .nav-links a {
+  color: var(--modern-muted);
+  font-weight: 500;
+}
+
+.app-modern .nav-links a:hover {
+  color: var(--modern-ink);
+}
+
+.app-modern .nav-more-menu {
+  border: 1px solid var(--modern-border);
+  box-shadow: var(--modern-shadow-lg);
+  border-radius: var(--modern-radius);
+}
+
+.app-modern .nav-more-menu a:hover {
+  background: var(--modern-hover);
+  color: var(--modern-ink);
+}
+
+.app-modern .btn-ghost {
+  color: var(--modern-muted);
+}
+
+.app-modern .btn-ghost:hover {
+  background: var(--modern-hover);
+  color: var(--modern-ink);
+}
+
+.app-modern-badge {
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--modern-border);
+  background: var(--modern-hover);
+  color: var(--modern-muted);
+  white-space: nowrap;
+}
+
+.app-modern .card {
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--modern-radius-lg);
+  box-shadow: var(--modern-shadow-sm);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+.app-modern .card:hover {
+  box-shadow: var(--modern-shadow);
+  transform: none;
+}
+
+/* Frosted glass on every card-like surface */
+.app-modern .app-card,
+.app-modern .app-kpi,
+.app-modern .sq-kpi,
+.app-modern .upload-card,
+.app-modern .ns-card-frame,
+.app-modern .dashboard-insight,
+.app-modern .dashboard-metric,
+.app-modern .dashboard-quick,
+.app-modern .sq-table-wrap,
+.app-modern .report-draft-card,
+.app-modern .cmdk-panel,
+.app-modern .nav-more-menu {
+  background: var(--glass-surface);
+  border-color: var(--glass-border);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+.app-modern .container {
+  color: var(--modern-ink);
+}
+
+.app-modern input[type="text"],
+.app-modern input[type="password"],
+.app-modern input[type="email"],
+.app-modern select,
+.app-modern textarea {
+  border: 1px solid var(--glass-border);
+  background: var(--glass-surface-strong);
+  border-radius: var(--modern-radius);
+  color: var(--modern-ink);
+  box-shadow: var(--modern-shadow-sm);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Glass on chips, pills, toggles */
+.app-modern .app-chip,
+.app-modern .sq-chip,
+.app-modern .model-pill,
+.app-modern .cmdk-trigger,
+.app-modern .theme-toggle,
+.app-modern .sq-icon-btn,
+.app-modern .app-verdict-btn,
+.app-modern .ios-input-row {
+  background: var(--glass-surface-strong);
+  border-color: var(--glass-border);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+}
+
+.app-modern .upload-zone-ios {
+  background: var(--glass-surface);
+  backdrop-filter: blur(16px) saturate(1.25);
+  -webkit-backdrop-filter: blur(16px) saturate(1.25);
+}
+
+.app-modern input:focus,
+.app-modern select:focus,
+.app-modern textarea:focus {
+  border-color: var(--modern-border-strong);
+  box-shadow: 0 0 0 3px rgba(9, 9, 11, 0.08);
+  background: var(--modern-surface);
+}
+
+.app-modern .ios-btn {
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.app-modern .ios-btn--primary,
+.app-modern a.ios-btn--primary,
+.app-modern a.ios-btn--primary:visited,
+.app-modern a.ios-btn--primary:hover,
+.app-modern a.ios-btn--primary:active {
+  color: #ffffff;
+  background: rgba(9, 9, 11, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+}
+
+.app-modern .ios-btn--primary:hover,
+.app-modern a.ios-btn--primary:hover {
+  background: rgba(9, 9, 11, 0.9);
+}
+
+.app-modern .ios-btn--secondary,
+.app-modern a.ios-btn--secondary,
+.app-modern a.ios-btn--secondary:visited,
+.app-modern a.ios-btn--secondary:hover,
+.app-modern a.ios-btn--secondary:active {
+  color: var(--modern-ink);
+  background: var(--glass-surface-strong);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.app-modern .ios-btn--secondary:hover,
+.app-modern a.ios-btn--secondary:hover {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.app-modern .ios-btn--ghost,
+.app-modern a.ios-btn--ghost,
+.app-modern a.ios-btn--ghost:visited,
+.app-modern a.ios-btn--ghost:hover,
+.app-modern a.ios-btn--ghost:active {
+  color: var(--modern-ink-soft);
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+}
+
+.app-modern .ios-btn--ghost:hover,
+.app-modern a.ios-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--modern-ink);
+}
+
+.app-modern .ios-btn--danger,
+.app-modern a.ios-btn--danger {
+  background: rgba(220, 38, 38, 0.82);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+}
+
+.app-modern .btn-primary {
+  color: #fff;
+  background: var(--modern-primary);
+}
+
+.app-modern .btn,
+.app-modern a.btn {
+  background: var(--modern-surface);
+  border: 1px solid var(--modern-border);
+  color: var(--modern-ink);
+}
+
+.app-modern .btnPrimary,
+.app-modern a.btnPrimary {
+  background: var(--modern-primary);
+  color: #fff;
+}
+
+.app-modern .btnOutline {
+  background: transparent;
+  border-color: var(--modern-border-strong);
+}
+
+/* ── Dark mode (Linear-style) ── */
+.app-modern--dark {
+  --modern-bg: #09090b;
+  --modern-surface: #18181b;
+  --modern-ink: #fafafa;
+  --modern-ink-soft: #d4d4d8;
+  --modern-muted: #a1a1aa;
+  --modern-border: #27272a;
+  --modern-border-strong: #3f3f46;
+  --modern-hover: #27272a;
+  --modern-primary: #fafafa;
+  --modern-primary-hover: #e4e4e7;
+  --modern-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --modern-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --modern-shadow-lg: 0 24px 48px rgba(0, 0, 0, 0.55);
+  --glass-surface: rgba(24, 24, 27, 0.55);
+  --glass-surface-strong: rgba(24, 24, 27, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  background:
+    linear-gradient(rgba(9, 9, 11, 0.32), rgba(9, 9, 11, 0.44)),
+    url("/glass-backdrop.png") center / cover no-repeat fixed var(--modern-bg);
+}
+
+.app-modern--dark nav {
+  background: rgba(9, 9, 11, 0.82);
+  border-bottom-color: var(--modern-border);
+}
+
+.app-modern--dark .ios-btn--primary,
+.app-modern--dark a.ios-btn--primary,
+.app-modern--dark a.ios-btn--primary:visited,
+.app-modern--dark a.ios-btn--primary:hover,
+.app-modern--dark a.ios-btn--primary:active {
+  color: #09090b;
+  background: rgba(250, 250, 250, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+.app-modern--dark .ios-btn--primary:hover,
+.app-modern--dark a.ios-btn--primary:hover {
+  background: rgba(250, 250, 250, 0.98);
+}
+
+.app-modern--dark .ios-btn--secondary,
+.app-modern--dark a.ios-btn--secondary,
+.app-modern--dark a.ios-btn--secondary:visited,
+.app-modern--dark a.ios-btn--secondary:active {
+  color: var(--modern-ink);
+  background: var(--glass-surface-strong);
+  border-color: var(--glass-border);
+}
+
+.app-modern--dark .ios-btn--secondary:hover,
+.app-modern--dark a.ios-btn--secondary:hover {
+  background: rgba(39, 39, 42, 0.85);
+}
+
+.app-modern--dark .ios-btn--ghost,
+.app-modern--dark a.ios-btn--ghost,
+.app-modern--dark a.ios-btn--ghost:visited,
+.app-modern--dark a.ios-btn--ghost:active {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.app-modern--dark .ios-btn--ghost:hover,
+.app-modern--dark a.ios-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.app-modern--dark input:focus,
+.app-modern--dark select:focus,
+.app-modern--dark textarea:focus {
+  box-shadow: 0 0 0 3px rgba(250, 250, 250, 0.12);
+}
+
+/* ── App banners ── */
+.app-banner {
+  padding: 10px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--modern-border);
+  color: var(--modern-ink);
+}
+
+.app-banner code {
+  background: var(--modern-hover);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.app-banner--warn {
+  background: rgba(251, 191, 36, 0.15);
+  border-bottom-color: rgba(245, 158, 11, 0.35);
+}
+
+.app-banner--info {
+  background: rgba(96, 165, 250, 0.12);
+  border-bottom-color: rgba(59, 130, 246, 0.3);
+}
+
+/* ── Command palette (⌘K) ── */
+.cmdk-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--modern-border);
+  background: var(--modern-surface);
+  color: var(--modern-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.cmdk-trigger:hover {
+  background: var(--modern-hover);
+  color: var(--modern-ink);
+}
+
+.cmdk-trigger-kbd,
+.cmdk-kbd,
+.cmdk-footer kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--modern-border);
+  background: var(--modern-hover);
+  color: var(--modern-muted);
+}
+
+.cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: min(12vh, 120px) 16px 16px;
+  animation: cmdk-fade-in 0.15s ease;
+}
+
+@keyframes cmdk-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.cmdk-panel {
+  width: min(560px, 100%);
+  background: var(--modern-surface);
+  border: 1px solid var(--modern-border);
+  border-radius: var(--modern-radius-lg);
+  box-shadow: var(--modern-shadow-lg);
+  overflow: hidden;
+  animation: cmdk-slide-in 0.18s ease;
+}
+
+@keyframes cmdk-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.cmdk-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--modern-border);
+}
+
+.cmdk-search-icon {
+  color: var(--modern-muted);
+  font-size: 18px;
+}
+
+.cmdk-input {
+  flex: 1;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  font-size: 15px;
+  color: var(--modern-ink);
+  outline: none;
+}
+
+.cmdk-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.cmdk-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease;
+}
+
+.cmdk-item--active,
+.cmdk-item:hover {
+  background: var(--modern-hover);
+}
+
+.cmdk-item-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--modern-ink);
+}
+
+.cmdk-item-hint {
+  font-size: 12px;
+  color: var(--modern-muted);
+  flex-shrink: 0;
+}
+
+.cmdk-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--modern-muted);
+  font-size: 13px;
+}
+
+.cmdk-footer {
+  display: flex;
+  gap: 16px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--modern-border);
+  font-size: 11px;
+  color: var(--modern-muted);
+}
+
+.cmdk-footer kbd {
+  margin: 0 2px;
+}
+
+/* ── Theme toggle ── */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid var(--modern-border);
+  background: var(--modern-surface);
+  color: var(--modern-ink-soft);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.theme-toggle:hover {
+  background: var(--modern-hover);
+  color: var(--modern-ink);
+}
+
+/* ── Skeleton loaders ── */
+@keyframes ui-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.ui-skeleton {
+  border-radius: 8px;
+  background: linear-gradient(
+    90deg,
+    var(--modern-hover) 0%,
+    color-mix(in srgb, var(--modern-border) 60%, var(--modern-hover)) 50%,
+    var(--modern-hover) 100%
+  );
+  background-size: 200% 100%;
+  animation: ui-shimmer 1.2s ease-in-out infinite;
+}
+
+.ui-skeleton--title {
+  height: 18px;
+  width: 70%;
+  margin-bottom: 10px;
+}
+
+.ui-skeleton--line {
+  height: 12px;
+  width: 90%;
+  margin-bottom: 14px;
+}
+
+.ui-skeleton--btn {
+  height: 32px;
+  width: 88px;
+  border-radius: 999px;
+}
+
+.ui-skeleton--cell {
+  height: 14px;
+  flex: 1;
+  min-width: 48px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cmdk-overlay,
+  .cmdk-panel,
+  .ui-skeleton {
+    animation: none;
+  }
+}
+
+/* Reading mode — minimal clinical chrome */
+.reading-mode-page {
+  padding-bottom: 48px;
+}
+
+.reading-mode-page .card {
+  border-radius: var(--modern-radius-lg);
+}
+
+/* ── Scan / upload components — neutral under app-modern ── */
+.app-modern .upload-zone-ios {
+  border-color: var(--glass-border);
+  background: var(--glass-surface);
+  backdrop-filter: blur(16px) saturate(1.25);
+  -webkit-backdrop-filter: blur(16px) saturate(1.25);
+}
+
+.app-modern .upload-zone-ios:hover,
+.app-modern .upload-zone-ios:focus-within {
+  border-color: var(--modern-ink-soft);
+  background: var(--glass-surface-strong);
+}
+
+.app-modern .upload-zone-icon-wrap {
+  background: var(--modern-border);
+  color: var(--modern-ink);
+}
+
+.app-modern .model-pill--active,
+.app-modern .model-pill--active:hover,
+.app-modern .model-pill--active:active {
+  background: var(--modern-primary);
+  border-color: var(--modern-primary);
+  color: #fff;
+}
+
+.app-modern--dark .model-pill--active,
+.app-modern--dark .model-pill--active:hover,
+.app-modern--dark .model-pill--active:active {
+  color: #09090b;
+}
+
+.app-modern .milestone-dot--active {
+  background: color-mix(in srgb, var(--modern-ink) 8%, transparent);
+  border-color: var(--modern-ink);
+  color: var(--modern-ink);
+}
+
+.app-modern .milestone-dot--done {
+  background: color-mix(in srgb, var(--modern-ink) 6%, transparent);
+  border-color: var(--modern-ink-soft);
+  color: var(--modern-ink-soft);
+}
+
+.app-modern .ios-bar-fill,
+.app-modern .ios-bar-fill--warning {
+  background: var(--modern-primary);
+}
+
+.app-modern .ios-bar-fill--ok {
+  background: var(--modern-ink-soft);
+}
+
+.app-modern .ios-bar-fill--danger {
+  background: #dc2626;
+}
+
+.app-modern .ios-disclaimer {
+  background: var(--modern-hover);
+  border-color: var(--modern-border);
+}
+
+.app-modern .text-ns-warning-em {
+  color: var(--modern-ink);
+}
+
+.app-modern .text-ns-primary-strong,
+.app-modern .text-ns-success,
+.app-modern .text-ns-val-ok {
+  color: var(--modern-ink);
+}
+
+.app-modern .ios-soft-shadow {
+  box-shadow: var(--modern-shadow-sm);
+}
+
+.app-modern .ios-risk-banner--ok {
+  border-color: var(--modern-border);
+  background: var(--modern-hover);
+  color: var(--modern-ink-soft);
+}
+
+.app-modern .ios-risk-banner {
+  border-color: rgba(220, 38, 38, 0.25);
+  background: rgba(220, 38, 38, 0.06);
+  color: #dc2626;
+}
+
+.app-modern .ios-sim-badge {
+  background: var(--modern-hover);
+  color: var(--modern-ink-soft);
+  border-color: var(--modern-border);
+}
+
+.app-modern .ns-card-frame {
+  border-color: var(--glass-border);
+  background: var(--glass-surface);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+.app-modern .ios-format-badge {
+  background: var(--modern-hover);
+  color: var(--modern-ink-soft);
+  border: 1px solid var(--modern-border);
+}
+
+.app-modern .grid2 {
+  gap: 16px;
+}
+
+/* Scan viewport — neutral sweep under app-modern */
+.app-modern .scan-viewport-ios .scan-sweep-line {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--modern-ink) 25%, transparent),
+    transparent
+  ) !important;
+}
+
+.app-modern .scan-viewport-ios .scan-status-dot {
+  background: var(--modern-primary) !important;
+}
+
+.app-modern .scan-viewport-ios .scan-status-dot--error {
+  background: #dc2626 !important;
+}
+
+.app-modern .docs-assistant .da-send-btn,
+.app-modern .docs-assistant .da-chip.active {
+  background: var(--modern-primary);
+  border-color: var(--modern-primary);
+  color: #fff;
+}
+
+.app-modern--dark .docs-assistant .da-send-btn,
+.app-modern--dark .docs-assistant .da-chip.active {
+  color: #09090b;
+}
+
+.app-modern .docs-assistant h1 {
+  color: var(--modern-ink);
+  font-family: var(--sans, system-ui, sans-serif);
+  letter-spacing: -0.03em;
+}
+
+.app-modern .report-draft-btn {
+  background: var(--modern-primary);
+  color: #fff;
+  border: none;
+}
+
+.app-modern--dark .report-draft-btn {
+  color: #09090b;
+}
+
+.app-modern .shadow-mode-banner {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: var(--modern-radius);
+  border: 1px solid var(--modern-border);
+  background: var(--modern-hover);
+  color: var(--modern-ink);
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.app-modern .shadow-mode-banner__icon {
+  font-size: 18px;
+  line-height: 1;
+  color: var(--modern-muted);
+}
+
+.app-modern .shadow-mode-banner__title {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--modern-ink);
+}
+
+.app-modern .shadow-mode-banner__body {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--modern-muted);
+}

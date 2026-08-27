@@ -1,20 +1,19 @@
 import React from "react";
+import { AppPage } from "../components/layout/AppPage";
 
 export default function Governance() {
   return (
-    <div className="container">
-      <h2 style={{ marginTop: 16 }}>Governance &amp; admin (Phase D)</h2>
-      <p style={{ color: "var(--ink-mute)", marginTop: 4 }}>
-        Admin console shell for RBAC, retention, keys, and audit exploration.
-      </p>
-
-      <div className="grid2" style={{ marginTop: 14 }}>
+    <AppPage
+      title="Governance & admin"
+      subtitle="Admin console shell for RBAC, retention, keys, and audit exploration."
+    >
+      <div className="app-grid-2">
         <div className="card">
-          <div style={{ fontWeight: 800 }}>Tenants &amp; roles</div>
-          <p style={{ fontSize: 13, color: "var(--ink-mute)", marginTop: 4 }}>
-            Later, connect this to your auth provider and a `/admin/tenants` API.
+          <div className="app-card-title">Tenants &amp; roles</div>
+          <p className="app-card-sub">
+            Later, connect this to your auth provider and a <code>/admin/tenants</code> API.
           </p>
-          <ul style={{ marginTop: 8, paddingLeft: 18, fontSize: 13, color: "var(--ink-mute)" }}>
+          <ul className="app-text-muted" style={{ marginTop: 8, paddingLeft: 18, fontSize: 13 }}>
             <li>Site-001 — Radiology pilot — Role: reader</li>
             <li>Site-002 — Research only — Role: data-science</li>
             <li>Global — Vendor — Role: admin</li>
@@ -22,16 +21,15 @@ export default function Governance() {
         </div>
 
         <div className="card">
-          <div style={{ fontWeight: 800 }}>Audit explorer</div>
-          <p style={{ fontSize: 13, color: "var(--ink-mute)", marginTop: 4 }}>
-            UI entrypoint for exploring `/cases`, `/metrics`, and future audit logs (JSONL or Mongo).
+          <div className="app-card-title">Audit explorer</div>
+          <p className="app-card-sub">
+            UI entrypoint for exploring <code>/cases</code>, <code>/metrics</code>, and future audit logs.
           </p>
-          <p style={{ fontSize: 13, color: "var(--ink-mute)", marginTop: 8 }}>
-            Think of this as the “compliance console” where you can show regulators how the system behaved.
+          <p className="app-text-muted" style={{ marginTop: 8, fontSize: 13 }}>
+            Think of this as the compliance console where you can show regulators how the system behaved.
           </p>
         </div>
       </div>
-    </div>
+    </AppPage>
   );
 }
-

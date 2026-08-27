@@ -70,7 +70,7 @@ async def vector_rag_query(
             "Keep the answer concise.\n\n"
             f"Question: {question}\n\nEvidence:\n{evidence_context}\n"
         )
-        client = get_llm_client(provider="gemini")
+        client = get_llm_client()
         resp = client.generate_content(prompt)
         answer_text = ((resp.text if resp else "") or "").strip()
         usage = getattr(resp, "usage_metadata", None)
@@ -80,7 +80,8 @@ async def vector_rag_query(
             )
     except Exception:
         answer_text = (
-            "Retrieved evidence is listed in citations. Configure GOOGLE_API_KEY for a narrative answer."
+            "Retrieved evidence is listed in citations. Configure BEDROCK_MODEL_ID or "
+            "GOOGLE_API_KEY for a narrative answer."
         )
 
     if not answer_text:

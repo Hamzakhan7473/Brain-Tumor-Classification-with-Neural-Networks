@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { formatApiConnectionHint, generateReport, ReportResponse } from "../api/client";
 import EvidenceDrawer, { EvidenceCitation } from "../components/EvidenceDrawer";
+import { AppPage } from "../components/layout/AppPage";
+import { IosButton, IosLinkButton } from "../components/ui/IosButton";
 
 type StoredPrediction = {
   scanBase64: string;
@@ -70,7 +71,7 @@ export default function GenerateReport() {
       const ts = new Date().toISOString();
       sessionStorage.setItem(
         "lastReport",
-        JSON.stringify({ study_instance_uid: stored.study_instance_uid, report_text: r.report_text, timestamp: ts })
+        JSON.stringify({ study_instance_uid: stored.study_instance_uid, report_text: r.report_text, timestamp: ts }),
       );
       setSavedTimestamp(ts);
     } catch (e) {
@@ -101,79 +102,61 @@ export default function GenerateReport() {
   ];
 
   return (
-    <div className="container">
-      <h2 style={{ marginTop: 16 }}>Report draft</h2>
-
+    <AppPage title="Report draft">
       {!stored ? (
-        <div style={{ marginTop: 14, color: "var(--muted)" }}>
-          No prediction found in this session. Go to <a href="/upload">Upload & Predict</a>.
+        <div className="app-text-muted">
+          No prediction found in this session. Go to <a href="/upload">Upload &amp; Predict</a>.
         </div>
       ) : (
-        <div className="grid2" style={{ marginTop: 14 }}>
+        <div className="app-grid-2">
           <div className="card">
-            <div style={{ fontWeight: 800 }}>Structured context</div>
-            <div style={{ marginTop: 10, color: "var(--muted)" }}>
+            <div className="app-card-title">Structured context</div>
+            <div className="app-text-muted" style={{ marginTop: 10, fontSize: 13 }}>
               <div><b>Study UID:</b> {stored.study_instance_uid}</div>
               <div><b>Site ID:</b> {stored.site_id || "—"}</div>
               <div><b>Model:</b> {stored.model}</div>
             </div>
-            <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Link to={`/reading/${encodeURIComponent(stored.study_instance_uid)}`} className="btn btnOutline">
+            <div style={{ marginTop: 12 }}>
+              <IosLinkButton to={`/reading/${encodeURIComponent(stored.study_instance_uid)}`} variant="ghost">
                 Open reading mode
-              </Link>
+              </IosLinkButton>
             </div>
             <div style={{ marginTop: 18 }}>
-              <button className="btnPrimary" disabled={loading} onClick={onGenerate} style={{ width: "100%", padding: "12px 18px" }}>
+              <IosButton variant="primary" fullWidth loading={loading} disabled={loading} onClick={() => void onGenerate()}>
                 {loading ? "Generating..." : "Generate report (LLM)"}
-              </button>
+              </IosButton>
             </div>
-            {error ? (
-              <div style={{ marginTop: 12, color: "crimson", fontWeight: 600, whiteSpace: "pre-wrap" }}>{error}</div>
-            ) : null}
+            {error ? <div className="app-text-error" style={{ marginTop: 12, fontWeight: 600, whiteSpace: "pre-wrap" }}>{error}</div> : null}
             {savedTimestamp ? (
-              <div style={{ marginTop: 10, color: "var(--muted)", fontSize: 12 }}>
+              <div className="app-text-muted" style={{ marginTop: 10, fontSize: 12 }}>
                 Saved to reading mode: {new Date(savedTimestamp).toLocaleString()}
               </div>
             ) : null}
           </div>
 
           <div className="card">
-            <div style={{ fontWeight: 800 }}>LLM report (review &amp; sign)</div>
-            <div style={{ marginTop: 10, color: "var(--muted)" }}>
+            <div className="app-card-title">LLM report (review &amp; sign)</div>
+            <div className="app-text-muted" style={{ marginTop: 10, fontSize: 13 }}>
               {report
                 ? "Review the grounded report text below. In a clinical deployment this would be signed off inside the RIS/PACS."
                 : "Click generate to draft a grounded report via the backend."}
             </div>
             <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button className="btn" type="button" onClick={() => setDrawerOpen(true)}>
+              <IosButton variant="secondary" size="sm" onClick={() => setDrawerOpen(true)}>
                 View evidence
-              </button>
-              <Link to={`/reading/${encodeURIComponent(stored.study_instance_uid)}`} className="btn btnOutline">
+              </IosButton>
+              <IosLinkButton to={`/reading/${encodeURIComponent(stored.study_instance_uid)}`} variant="ghost" size="sm">
                 Open reading mode
-              </Link>
+              </IosLinkButton>
             </div>
             {report ? (
-              <pre
-                style={{
-                  whiteSpace: "pre-wrap",
-                  lineHeight: 1.5,
-                  background: "rgba(79,70,229,0.05)",
-                  border: "1px solid rgba(79,70,229,0.12)",
-                  padding: 14,
-                  borderRadius: 12,
-                  marginTop: 12,
-                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                }}
-              >
-                {report.report_text}
-              </pre>
+              <pre className="app-report-pre">{report.report_text}</pre>
             ) : null}
           </div>
         </div>
       )}
 
       <EvidenceDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} title="Report evidence" citations={reportCitations} />
-    </div>
+    </AppPage>
   );
 }
-

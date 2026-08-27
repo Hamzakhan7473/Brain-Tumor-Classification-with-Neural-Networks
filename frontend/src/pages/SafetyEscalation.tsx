@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { CaseSummary, listCases } from "../api/client";
+import { AppPage } from "../components/layout/AppPage";
 
 export default function SafetyEscalation() {
   const [cases, setCases] = useState<CaseSummary[]>([]);
@@ -33,53 +34,48 @@ export default function SafetyEscalation() {
         const conf = c.confidence ?? 1;
         return conf < 0.6;
       }),
-    [cases]
+    [cases],
   );
 
   return (
-    <div className="container">
-      <h2 style={{ marginTop: 16 }}>Safety escalation (Phase C)</h2>
-      <p style={{ color: "var(--ink-mute)", marginTop: 4 }}>
-        A simple view to track low-confidence or flagged cases that need mandatory overread.
-      </p>
-
-      <div className="card" style={{ marginTop: 14 }}>
-        <div style={{ fontWeight: 800 }}>Escalation list</div>
-        <p style={{ fontSize: 13, color: "var(--ink-mute)", marginTop: 4 }}>
+    <AppPage
+      title="Safety escalation"
+      subtitle="Track low-confidence or flagged cases that need mandatory overread."
+    >
+      <div className="card">
+        <div className="app-card-title">Escalation list</div>
+        <p className="app-card-sub">
           Currently escalates cases where model confidence &lt; 0.6. Later you can add richer rules via n8n.
         </p>
 
-        {error ? <div style={{ marginTop: 8, color: "crimson", fontSize: 13 }}>{error}</div> : null}
-        {loading ? <div style={{ marginTop: 8, color: "var(--ink-mute)", fontSize: 13 }}>Loading cases…</div> : null}
+        {error ? <div className="app-text-error" style={{ marginTop: 8, fontSize: 13 }}>{error}</div> : null}
+        {loading ? <div className="app-text-muted" style={{ marginTop: 8, fontSize: 13 }}>Loading cases…</div> : null}
 
-        <div style={{ marginTop: 10, overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <div className="app-table-wrap">
+          <table className="app-table">
             <thead>
-              <tr style={{ textAlign: "left", color: "var(--ink-mute)" }}>
-                <th style={{ padding: "6px 4px" }}>Study UID</th>
-                <th style={{ padding: "6px 4px" }}>Reason</th>
-                <th style={{ padding: "6px 4px" }}>Priority</th>
-                <th style={{ padding: "6px 4px" }}>Assigned</th>
-                <th style={{ padding: "6px 4px" }}>Status</th>
+              <tr>
+                <th>Study UID</th>
+                <th>Reason</th>
+                <th>Priority</th>
+                <th>Assigned</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {escalated.map((c) => (
                 <tr key={c.study_instance_uid}>
-                  <td style={{ padding: "6px 4px" }}>{c.study_instance_uid}</td>
-                  <td style={{ padding: "6px 4px" }}>
-                    Low confidence {((c.confidence ?? 0) * 100).toFixed(1)}%
-                  </td>
-                  <td style={{ padding: "6px 4px" }}>High</td>
-                  <td style={{ padding: "6px 4px" }}>Unassigned</td>
-                  <td style={{ padding: "6px 4px" }}>Needs overread</td>
+                  <td>{c.study_instance_uid}</td>
+                  <td>Low confidence {((c.confidence ?? 0) * 100).toFixed(1)}%</td>
+                  <td>High</td>
+                  <td>Unassigned</td>
+                  <td>Needs overread</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
-    </div>
+    </AppPage>
   );
 }
-

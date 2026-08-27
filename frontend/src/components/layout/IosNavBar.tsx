@@ -1,20 +1,15 @@
-/**
- * Navbar colors from global.css :root:
- *   surface wash: color-mix with --surface
- *   border bottom: --line
- *   primary text/logo: --ink, span accent --green-600 (existing .nav-logo-text)
- *   warning pill: bg --green-50, border --green-300, text --green-700
- */
-
 import React from "react";
 import { Link } from "react-router-dom";
+import { IosLinkButton } from "../ui/IosButton";
+import { ThemeToggle } from "./ThemeToggle";
 
 type IosNavBarProps = {
   moreOpen: boolean;
   setMoreOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
+  onOpenCommandPalette: () => void;
 };
 
-export function IosNavBar({ moreOpen, setMoreOpen }: IosNavBarProps): React.ReactElement {
+export function IosNavBar({ moreOpen, setMoreOpen, onOpenCommandPalette }: IosNavBarProps): React.ReactElement {
   return (
     <nav>
       <Link to="/dashboard" className="nav-logo min-tap-target" style={{ minHeight: "var(--tap-min)" }}>
@@ -76,23 +71,16 @@ export function IosNavBar({ moreOpen, setMoreOpen }: IosNavBarProps): React.Reac
         </li>
       </ul>
 
-      <div className="nav-actions" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <span
-          className="text-ios-caption2 font-semibold font-ios ios-hide-narrow-nav"
-          style={{
-            padding: "4px 12px",
-            borderRadius: 999,
-            border: "1px solid var(--green-300)",
-            background: "var(--green-50)",
-            color: "var(--green-700)",
-            whiteSpace: "nowrap",
-          }}
-        >
-          Research only
-        </span>
-        <Link to="/upload" className="btn-primary min-tap-target" style={{ display: "inline-flex", alignItems: "center" }}>
+      <div className="nav-actions" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <button type="button" className="cmdk-trigger min-tap-target ios-hide-narrow-nav" onClick={onOpenCommandPalette}>
+          <span className="cmdk-trigger-label">Search</span>
+          <kbd className="cmdk-trigger-kbd">⌘K</kbd>
+        </button>
+        <ThemeToggle />
+        <span className="text-ios-caption2 font-semibold font-ios ios-hide-narrow-nav app-modern-badge">Research only</span>
+        <IosLinkButton to="/upload" variant="primary" className="min-tap-target">
           New scan
-        </Link>
+        </IosLinkButton>
       </div>
     </nav>
   );

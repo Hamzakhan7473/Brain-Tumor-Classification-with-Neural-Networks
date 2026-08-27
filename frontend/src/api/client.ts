@@ -337,6 +337,66 @@ export async function fetchPublicFeatures(): Promise<FeaturesCatalogResponse | n
 
 export type ReportDraftDoc = Record<string, unknown>;
 
+export type BicrRole = "reader1" | "reader2" | "adjudicator";
+
+export async function enrollBicrCase(body: {
+  case_id: string;
+  subject_id?: string;
+  visit?: string;
+  timepoint?: string;
+  blind_model?: boolean;
+}): Promise<Record<string, unknown>> {
+  const res = await fetch(apiUrl("/bicr/cases/enroll"), {
+    method: "POST",
+    headers: { ...buildAuthHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as Record<string, unknown>;
+}
+
+export async function getBicrCase(caseId: string, role: BicrRole): Promise<Record<string, unknown>> {
+  const q = new URLSearchParams({ role });
+  const res = await fetch(apiUrl(`/bicr/cases/${encodeURIComponent(caseId)}?${q}`), {
+    headers: buildAuthHeaders(),
+  });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as Record<string, unknown>;
+}
+
+export async function submitBicrRead(
+  caseId: string,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const res = await fetch(apiUrl(`/bicr/cases/${encodeURIComponent(caseId)}/reads`), {
+    method: "POST",
+    headers: { ...buildAuthHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as Record<string, unknown>;
+}
+
+export async function submitBicrAdjudication(
+  caseId: string,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const res = await fetch(apiUrl(`/bicr/cases/${encodeURIComponent(caseId)}/adjudicate`), {
+    method: "POST",
+    headers: { ...buildAuthHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as Record<string, unknown>;
+}
+
+export async function fetchBicrQueue(role: BicrRole, limit = 50): Promise<Record<string, unknown>> {
+  const q = new URLSearchParams({ role, limit: String(limit) });
+  const res = await fetch(apiUrl(`/bicr/queue?${q}`), { headers: buildAuthHeaders() });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as Record<string, unknown>;
+}
+
 export async function createReportDraft(body: {
   case_id: string;
   template_id: string;
@@ -344,6 +404,7 @@ export async function createReportDraft(body: {
   clinical_context?: Record<string, unknown>;
   scanner_field_strength?: string;
   prior_studies?: string;
+  prior_model_run?: Record<string, unknown>;
 }): Promise<ReportDraftDoc> {
   const res = await fetch(apiUrl("/report/draft"), {
     method: "POST",

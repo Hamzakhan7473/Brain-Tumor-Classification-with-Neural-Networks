@@ -61,9 +61,9 @@ const ERROR_TAGS = [
 const SEVERITIES = ["Normal", "Mild", "Moderate", "Severe"] as const;
 
 function labelTone(lc: LabelClass): string {
-  if (lc === "danger") return "var(--green-900)";
-  if (lc === "warn") return "var(--green-700)";
-  return "var(--green-600)";
+  if (lc === "danger") return "#dc2626";
+  if (lc === "warn") return "#d97706";
+  return "var(--modern-ink)";
 }
 
 function FeedbackSkeleton() {
@@ -109,7 +109,7 @@ function CasePicker({ onPick }: { onPick: (uid: string) => void }) {
   if (err) {
     return (
       <div className="container" style={{ marginTop: 16 }}>
-        <p style={{ color: "var(--green-900)" }}>{err}</p>
+        <p style={{ color: "#dc2626" }}>{err}</p>
         <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
           <IosButton variant="secondary" size="md" onClick={() => setReloadToken((n) => n + 1)}>
             Refresh list
@@ -217,14 +217,14 @@ function PredictionCard({ cr }: { cr: CaseReview }) {
             <div key={cls} style={{ marginBottom: 8 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                 <span style={{ color: isTop ? "var(--ink)" : "var(--ink-soft)" }}>{cls}</span>
-                <span style={{ color: isTop ? "var(--green-600)" : "var(--ink-mute)" }}>{pct}%</span>
+                <span style={{ color: isTop ? "var(--modern-primary)" : "var(--ink-mute)" }}>{pct}%</span>
               </div>
               <div style={{ height: 8, borderRadius: 999, background: "var(--line)", overflow: "hidden" }}>
                 <div
                   style={{
                     height: "100%",
                     width: `${Math.max(2, (p as number) * 100)}%`,
-                    background: isTop ? "var(--green-600)" : "var(--ink-mute)",
+                    background: isTop ? "var(--modern-primary)" : "var(--ink-mute)",
                     opacity: isTop ? 1 : 0.45,
                   }}
                 />
@@ -247,17 +247,7 @@ function VerdictPicker({ value, onChange }: { value: Verdict | null; onChange: (
         aria-pressed={sel}
         aria-label={label}
         onClick={() => onChange(v)}
-        style={{
-          flex: 1,
-          minWidth: 120,
-          padding: "12px 10px",
-          borderRadius: "var(--radius-sm)",
-          border: sel ? "1px solid var(--green-600)" : "1px solid var(--line)",
-          background: sel ? "color-mix(in srgb, var(--green-50) 95%, var(--white))" : "rgba(255,255,255,0.9)",
-          boxShadow: sel ? "inset 0 0 0 1px color-mix(in srgb, var(--green-600) 35%, transparent)" : "none",
-          cursor: "pointer",
-          textAlign: "left",
-        }}
+        className={`app-verdict-btn${sel ? " app-verdict-btn--selected" : ""}`}
       >
         <div style={{ fontSize: 18 }}>{icon}</div>
         <div style={{ fontWeight: 800, marginTop: 4 }}>{label}</div>
@@ -268,7 +258,7 @@ function VerdictPicker({ value, onChange }: { value: Verdict | null; onChange: (
     );
   }
   return (
-    <div role="group" aria-label="Verdict" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+    <div role="group" aria-label="Verdict" className="app-verdict-grid">
       {btn("agree", "Agree", "Model matches your read", "✓")}
       {btn("partial", "Partially", "Mostly right with material caveats", "◐")}
       {btn("disagree", "Disagree", "Wrong finding or severity", "✕")}
@@ -503,7 +493,7 @@ export default function ClinicalFeedback() {
       <div className="page container" style={{ marginTop: 16 }}>
         <ShadowModeBanner />
         <h2 className="text-ios-title2">Could not load case</h2>
-        <p style={{ color: "var(--green-900)", marginTop: 8, whiteSpace: "pre-wrap" }}>{error || "Case not found"}</p>
+        <p style={{ color: "#dc2626", marginTop: 8, whiteSpace: "pre-wrap" }}>{error || "Case not found"}</p>
         <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
           <IosButton variant="primary" size="md" onClick={() => void loadCase()}>
             Try again
@@ -520,7 +510,7 @@ export default function ClinicalFeedback() {
     return (
       <div className="page container" style={{ marginTop: 20, maxWidth: 560 }}>
         <ShadowModeBanner />
-        <div style={{ fontSize: 48, color: "var(--green-600)" }}>✓</div>
+        <div style={{ fontSize: 48, color: "var(--modern-primary)" }}>✓</div>
         <h2 className="text-ios-title2" style={{ marginTop: 8 }}>
           Feedback submitted
         </h2>
@@ -588,7 +578,7 @@ export default function ClinicalFeedback() {
     <div className="page">
       <ShadowModeBanner />
       <div className="container" style={{ maxWidth: 1040, marginTop: 12 }}>
-        <p className="text-ios-footnote" style={{ color: "var(--green-800)", marginBottom: 12 }}>
+        <p className="text-ios-footnote" style={{ color: "var(--modern-ink-soft)", marginBottom: 12 }}>
           Shadow mode feedback: verdict is recorded for model improvement only — not sent to the clinical record.
         </p>
 
@@ -638,8 +628,8 @@ export default function ClinicalFeedback() {
                           style={{
                             padding: "10px 8px",
                             borderRadius: "var(--radius-sm)",
-                            border: gtClass === c ? "1px solid var(--green-600)" : "1px solid var(--line)",
-                            background: gtClass === c ? "color-mix(in srgb, var(--green-100) 80%, white)" : "var(--surface)",
+                            border: gtClass === c ? "1px solid var(--modern-primary)" : "1px solid var(--line)",
+                            background: gtClass === c ? "color-mix(in srgb, var(--modern-primary) 8%, var(--modern-surface))" : "var(--surface)",
                             cursor: "pointer",
                             fontWeight: 600,
                           }}
@@ -663,8 +653,8 @@ export default function ClinicalFeedback() {
                           style={{
                             padding: "8px 12px",
                             borderRadius: 999,
-                            border: gtSev === s ? "1px solid var(--green-600)" : "1px solid var(--line)",
-                            background: gtSev === s ? "color-mix(in srgb, var(--green-100) 80%, white)" : "var(--surface)",
+                            border: gtSev === s ? "1px solid var(--modern-primary)" : "1px solid var(--line)",
+                            background: gtSev === s ? "color-mix(in srgb, var(--modern-primary) 8%, var(--modern-surface))" : "var(--surface)",
                             cursor: "pointer",
                             fontWeight: 700,
                           }}
@@ -688,7 +678,7 @@ export default function ClinicalFeedback() {
                           fontSize: 11,
                           padding: "4px 8px",
                           borderRadius: 999,
-                          border: on ? "1px solid var(--green-600)" : "1px solid var(--line)",
+                          border: on ? "1px solid var(--modern-primary)" : "1px solid var(--line)",
                           background: on ? "rgba(37,196,143,0.12)" : "rgba(248,250,249,0.9)",
                           cursor: "pointer",
                         }}
@@ -725,7 +715,7 @@ export default function ClinicalFeedback() {
             </div>
 
             {error ? (
-              <div style={{ marginTop: 12, color: "var(--green-900)", fontWeight: 600, whiteSpace: "pre-wrap" }}>{error}</div>
+              <div style={{ marginTop: 12, color: "#dc2626", fontWeight: 600, whiteSpace: "pre-wrap" }}>{error}</div>
             ) : null}
 
             <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>

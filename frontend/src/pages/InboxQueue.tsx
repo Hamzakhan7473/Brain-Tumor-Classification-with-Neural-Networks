@@ -1,5 +1,6 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { AppPage } from "../components/layout/AppPage";
+import { IosLinkButton } from "../components/ui/IosButton";
 
 type InboxRow = {
   id: string;
@@ -31,46 +32,44 @@ const mockMessages: InboxRow[] = [
 
 export default function InboxQueue() {
   return (
-    <div className="container">
-      <h2 style={{ marginTop: 16 }}>Inbox triage</h2>
-      <p style={{ color: "var(--ink-mute)", marginTop: 4 }}>
-        Message worklist for portal messages and calls. Later this will tie into EHR inbox APIs.
-      </p>
-
-      <div className="card" style={{ marginTop: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+    <AppPage
+      title="Inbox triage"
+      subtitle="Message worklist for portal messages and calls. Later this will tie into EHR inbox APIs."
+    >
+      <div className="card">
+        <div className="app-toolbar">
           <div>
-            <div style={{ fontWeight: 800 }}>Queue</div>
-            <div style={{ fontSize: 13, color: "var(--ink-mute)", marginTop: 4 }}>
+            <div className="app-card-title">Queue</div>
+            <div className="app-card-sub">
               Total: {mockMessages.length} · Drafted replies are reviewed before sending.
             </div>
           </div>
         </div>
 
-        <div style={{ marginTop: 10, overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <div className="app-table-wrap">
+          <table className="app-table">
             <thead>
-              <tr style={{ textAlign: "left", color: "var(--ink-mute)" }}>
-                <th style={{ padding: "6px 4px" }}>Patient</th>
-                <th style={{ padding: "6px 4px" }}>Subject</th>
-                <th style={{ padding: "6px 4px" }}>Type</th>
-                <th style={{ padding: "6px 4px" }}>Risk</th>
-                <th style={{ padding: "6px 4px" }}>Age</th>
-                <th style={{ padding: "6px 4px" }}>Actions</th>
+              <tr>
+                <th>Patient</th>
+                <th>Subject</th>
+                <th>Type</th>
+                <th>Risk</th>
+                <th>Age</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {mockMessages.map((m) => (
                 <tr key={m.id}>
-                  <td style={{ padding: "6px 4px" }}>{m.patient}</td>
-                  <td style={{ padding: "6px 4px" }}>{m.subject}</td>
-                  <td style={{ padding: "6px 4px" }}>{m.type}</td>
-                  <td style={{ padding: "6px 4px" }}>{m.risk}</td>
-                  <td style={{ padding: "6px 4px" }}>{m.ageMinutes} min</td>
-                  <td style={{ padding: "6px 4px" }}>
-                    <Link to={`/inbox/${encodeURIComponent(m.id)}`} className="btn">
+                  <td>{m.patient}</td>
+                  <td>{m.subject}</td>
+                  <td>{m.type}</td>
+                  <td>{m.risk}</td>
+                  <td>{m.ageMinutes} min</td>
+                  <td>
+                    <IosLinkButton to={`/inbox/${encodeURIComponent(m.id)}`} variant="secondary" size="sm">
                       Open
-                    </Link>
+                    </IosLinkButton>
                   </td>
                 </tr>
               ))}
@@ -78,7 +77,6 @@ export default function InboxQueue() {
           </table>
         </div>
       </div>
-    </div>
+    </AppPage>
   );
 }
-

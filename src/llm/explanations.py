@@ -5,7 +5,7 @@ from typing import Optional
 from .client import get_llm_client, generate_with_image
 
 
-def explain_image(image_path_or_bytes, model_prediction: str, provider: str = "gemini", model_id: Optional[str] = None):
+def explain_image(image_path_or_bytes, model_prediction: str, provider: Optional[str] = None, model_id: Optional[str] = None):
     """Generate a short explanation of the scan given the model's prediction."""
     prompt = (
         "You are a medical imaging assistant. Based on this brain MRI scan and the following "

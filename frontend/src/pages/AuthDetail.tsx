@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import EvidenceDrawer, { EvidenceCitation } from "../components/EvidenceDrawer";
+import { AppPage } from "../components/layout/AppPage";
+import { IosButton } from "../components/ui/IosButton";
 
 const mockCitations: EvidenceCitation[] = [
   {
@@ -33,22 +35,20 @@ export default function AuthDetail() {
   }
 
   return (
-    <div className="container">
-      <h2 style={{ marginTop: 16 }}>Prior authorization</h2>
-      <p style={{ color: "var(--ink-mute)", marginTop: 4 }}>
-        Packet-style report for a brain MRI prior authorization. This mirrors your imaging report flow: context + AI-assisted draft + evidence.
-      </p>
-
-      <div className="grid2" style={{ marginTop: 14 }}>
+    <AppPage
+      title="Prior authorization"
+      subtitle="Packet-style report for a brain MRI prior authorization. Context + AI-assisted draft + evidence."
+    >
+      <div className="app-grid-2">
         <div className="card">
-          <div style={{ fontWeight: 800 }}>Structured context</div>
-          <div style={{ marginTop: 8, fontSize: 13, color: "var(--ink-mute)" }}>
+          <div className="app-card-title">Structured context</div>
+          <div className="app-text-muted" style={{ marginTop: 8, fontSize: 13 }}>
             <div>Patient: Jane D. (MRN 12345)</div>
             <div>Order: Brain MRI w/wo contrast</div>
             <div>Payer: Medicare Advantage</div>
             <div>Urgency: Standard (CMS 7d SLA)</div>
           </div>
-          <div style={{ marginTop: 10, fontSize: 13, color: "var(--ink-mute)" }}>
+          <div className="app-text-muted" style={{ marginTop: 10, fontSize: 13 }}>
             <b>Coverage requirements (CRD-style)</b>
             <ul style={{ marginTop: 4, paddingLeft: 18 }}>
               <li>Conservative therapy tried and failed (document yes/no with duration).</li>
@@ -59,25 +59,25 @@ export default function AuthDetail() {
         </div>
 
         <div className="card">
-          <div style={{ fontWeight: 800 }}>Auth packet draft</div>
-          <p style={{ marginTop: 6, fontSize: 13, color: "var(--ink-mute)" }}>
-            Draft text that combines your chart information and payer criteria into a clear prior authorization packet.
+          <div className="app-card-title">Auth packet draft</div>
+          <p className="app-card-sub">
+            Draft text that combines chart information and payer criteria into a clear prior authorization packet.
           </p>
           <textarea
             rows={8}
             defaultValue={
               "Indication: Patient with breakthrough seizures despite optimized anti-epileptic regimen. Concern for structural lesion.\n\nConservative therapy: On levetiracetam with therapeutic levels for 6 months; seizure frequency increased over last 8 weeks despite dose titration.\n\nPrior imaging/consults: CT head 8 months ago without mass or acute findings. Neurology consult recommends brain MRI w/wo contrast to evaluate for underlying lesion or progression."
             }
-            style={{ marginTop: 10 }}
+            style={{ marginTop: 10, width: "100%" }}
           />
-          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="btn" type="button" onClick={() => setDrawerOpen(true)}>
+          <div style={{ marginTop: 10 }}>
+            <IosButton variant="secondary" onClick={() => setDrawerOpen(true)}>
               View policy evidence
-            </button>
+            </IosButton>
           </div>
 
-          <div style={{ marginTop: 12, fontSize: 13, color: "var(--ink)" }}>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>Sign-off checklist</div>
+          <div style={{ marginTop: 12, fontSize: 13 }}>
+            <div className="app-card-title" style={{ marginBottom: 6 }}>Sign-off checklist</div>
             <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 4 }}>
               <input type="checkbox" checked={check1} onChange={(e) => setCheck1(e.target.checked)} />
               <span>Conservative therapy and neurologic symptoms are documented and consistent with payer criteria.</span>
@@ -92,16 +92,15 @@ export default function AuthDetail() {
             </label>
           </div>
 
-          <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-            <button className="btnPrimary" type="button" disabled={!allChecked} onClick={onMarkReady}>
+          <div style={{ marginTop: 12 }}>
+            <IosButton variant="primary" disabled={!allChecked} onClick={onMarkReady}>
               Mark ready to submit
-            </button>
+            </IosButton>
           </div>
         </div>
       </div>
 
       <EvidenceDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} title="Prior auth policies" citations={mockCitations} />
-    </div>
+    </AppPage>
   );
 }
-

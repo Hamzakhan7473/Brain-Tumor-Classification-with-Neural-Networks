@@ -342,6 +342,10 @@ class CreateReportDraftBody(BaseModel):
     clinical_context: Optional[dict] = None
     scanner_field_strength: Optional[str] = None
     prior_studies: Optional[str] = None
+    prior_model_run: Optional[dict] = Field(
+        None,
+        description="Prior timepoint inference payload (wmh metrics) for longitudinal comparison.",
+    )
 
 
 class ReportDraftSectionUpdateBody(BaseModel):
@@ -1230,7 +1234,6 @@ async def report(
             image_for_llm,
             label,
             conf,
-            provider="gemini",
             evidence_context=evidence_context,
         )
         if not report_text:
@@ -1294,6 +1297,14 @@ async def create_report_draft(
         "scanner_field_strength": body.scanner_field_strength,
         "prior_studies": body.prior_studies,
     }
+    if body.prior_model_run and isinstance(model_run.get("wmh"), dict):
+        from src.inference.wmh_longitudinal import compare_wmh_timepoints
+
+        case["longitudinal"] = compare_wmh_timepoints(
+            model_run,
+            body.prior_model_run,
+            prior_label=body.prior_studies or "prior study",
+        )
     try:
         builder = ReportBuilder(body.template_id.strip())
         draft = builder.build_draft(case=case, model_run=model_run)
@@ -1754,6 +1765,99 @@ async def clinical_feedback_recent(
         return out
 
     return {"items": [_ser(i) for i in items]}
+
+
+# --- BICR (Stage 2: dual-read + adjudication + time-point lock) ---
+
+from src.bicr.http_handlers import (
+    BicrAdjudicateBody,
+    BicrEnrollBody,
+    BicrLockBody,
+    BicrReadSubmitBody,
+    handle_bicr_adjudicate,
+    handle_bicr_enroll,
+    handle_bicr_get,
+    handle_bicr_lock,
+    handle_bicr_queue,
+    handle_bicr_read,
+)
+
+
+@app.post("/bicr/cases/enroll")
+@limiter.limit("60/minute")
+async def bicr_enroll_case(
+    request: Request,
+    body: BicrEnrollBody,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    api_key_user: Optional[str] = Depends(verify_api_key),
+):
+    user = ((x_user_id or api_key_user or "anonymous") or "anonymous")[:128]
+    case_payload = await get_case(request, body.case_id.strip(), _api_key=api_key_user)
+    case_review = case_payload.get("case_review")
+    if not case_review:
+        raise HTTPException(status_code=404, detail="Case review payload missing")
+    return await handle_bicr_enroll(body, user, case_review)
+
+
+@app.get("/bicr/cases/{case_id}")
+@limiter.limit("120/minute")
+async def bicr_get_case(
+    request: Request,
+    case_id: str,
+    role: str = Query("reader1", pattern="^(reader1|reader2|adjudicator)$"),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    return await handle_bicr_get(case_id.strip(), role)  # type: ignore[arg-type]
+
+
+@app.post("/bicr/cases/{case_id}/reads")
+@limiter.limit("60/minute")
+async def bicr_submit_read(
+    request: Request,
+    case_id: str,
+    body: BicrReadSubmitBody,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    api_key_user: Optional[str] = Depends(verify_api_key),
+):
+    user = ((x_user_id or api_key_user or "anonymous") or "anonymous")[:128]
+    return await handle_bicr_read(case_id.strip(), body, user)
+
+
+@app.post("/bicr/cases/{case_id}/adjudicate")
+@limiter.limit("60/minute")
+async def bicr_adjudicate_case(
+    request: Request,
+    case_id: str,
+    body: BicrAdjudicateBody,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    api_key_user: Optional[str] = Depends(verify_api_key),
+):
+    user = ((x_user_id or api_key_user or "anonymous") or "anonymous")[:128]
+    return await handle_bicr_adjudicate(case_id.strip(), body, user)
+
+
+@app.post("/bicr/cases/{case_id}/lock")
+@limiter.limit("30/minute")
+async def bicr_lock_timepoint(
+    request: Request,
+    case_id: str,
+    body: BicrLockBody,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    api_key_user: Optional[str] = Depends(verify_api_key),
+):
+    user = ((x_user_id or api_key_user or "anonymous") or "anonymous")[:128]
+    return await handle_bicr_lock(case_id.strip(), body, user)
+
+
+@app.get("/bicr/queue")
+@limiter.limit("120/minute")
+async def bicr_queue(
+    request: Request,
+    role: str = Query("reader1", pattern="^(reader1|reader2|adjudicator)$"),
+    limit: int = Query(50, ge=1, le=200),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    return await handle_bicr_queue(role, limit)  # type: ignore[arg-type]
 
 
 @app.get("/cases", response_model=list[CaseSummary])

@@ -4,10 +4,10 @@
   top: var(--nav-outer-height);
   z-index: 20;
   padding: 10px 16px;
-  background: color-mix(in srgb, var(--green-50) 92%, var(--white));
-  border-bottom: 1px solid var(--line);
+  background: var(--modern-surface);
+  border-bottom: 1px solid var(--modern-border);
   font-size: 13px;
-  color: var(--ink-mid);
+  color: var(--modern-ink-soft);
 }
 .report-draft-header {
   display: flex;
@@ -23,8 +23,8 @@
   letter-spacing: 0.06em;
   padding: 4px 10px;
   border-radius: 999px;
-  background: var(--green-100);
-  color: var(--green-800);
+  background: var(--modern-hover);
+  color: var(--modern-ink-soft);
 }
 .report-draft-grid {
   display: grid;
@@ -38,10 +38,11 @@
   }
 }
 .report-draft-card {
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  background: var(--modern-surface);
+  border: 1px solid var(--modern-border);
+  border-radius: var(--modern-radius-lg);
   padding: 16px;
+  box-shadow: var(--modern-shadow-sm);
 }
 .report-draft-toolbar {
   display: flex;
@@ -65,7 +66,7 @@
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--green-600);
+  color: var(--modern-primary);
   margin-bottom: 6px;
 }
 .report-draft-pill {
@@ -89,8 +90,8 @@
   border: 1px solid transparent;
 }
 .report-draft-editable:focus {
-  border-color: var(--green-500);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green-300) 55%, transparent);
+  border-color: var(--modern-ink-soft);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--modern-border) 55%, transparent);
 }
 .report-draft-finding-row {
   display: grid;
@@ -124,7 +125,7 @@
   width: 26px;
   height: 26px;
   border-radius: 999px;
-  background: var(--green-600);
+  background: var(--modern-primary);
   color: var(--white);
   font-size: 13px;
   font-weight: 700;
@@ -153,7 +154,7 @@
   padding: 10px 16px;
   font-weight: 700;
   font-size: 14px;
-  background: var(--green-600);
+  background: var(--modern-primary);
   color: var(--white);
 }
 .report-draft-btn:disabled {
@@ -162,7 +163,7 @@
 }
 .report-draft-btn-ghost {
   background: transparent;
-  color: var(--green-700);
+  color: var(--modern-ink-soft);
   border: 1px solid var(--line);
 }
 .report-draft-modal-back {

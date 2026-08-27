@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { AppPage } from "../components/layout/AppPage";
 import EvidenceDrawer, { EvidenceCitation } from "../components/EvidenceDrawer";
 import { getCase } from "../api/client";
+import { IosButton, IosLinkButton } from "../components/ui/IosButton";
 
 type StoredPrediction = {
   scanBase64: string;
@@ -145,50 +147,49 @@ export default function ReadingMode() {
 
   if (!studyId) {
     return (
-      <div className="container">
-        <h2 style={{ marginTop: 16 }}>Reading mode</h2>
-        <p style={{ color: "var(--ink-mute)" }}>Missing study ID.</p>
-      </div>
+      <AppPage title="Reading mode" subtitle="Missing study ID." className="reading-mode-page" />
     );
   }
 
   return (
-    <div className="container" style={{ maxWidth: 1080 }}>
-      <div style={{ marginTop: 16, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+    <AppPage className="reading-mode-page" wide>
+      <div className="app-reading-header">
         <div>
-          <h2 style={{ margin: 0 }}>Reading mode</h2>
-          <div style={{ color: "var(--ink-mute)", marginTop: 6 }}>
+          <h1 style={{ margin: 0, fontSize: "clamp(1.875rem, 4vw, 2.5rem)", fontWeight: 700, letterSpacing: "-0.04em" }}>
+            Reading mode
+          </h1>
+          <div className="app-text-muted" style={{ marginTop: 6 }}>
             Case <b>{studyId}</b> · {apiLoaded ? "Mongo-backed metadata" : "Session view"} ·{" "}
-            <button className="btn" type="button" onClick={() => setDrawerOpen(true)} style={{ padding: "6px 10px" }}>
+            <IosButton variant="secondary" size="sm" onClick={() => setDrawerOpen(true)}>
               Evidence
-            </button>
+            </IosButton>
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <button className="btn btnOutline" type="button" onClick={onPrint}>
+          <IosButton variant="ghost" size="sm" onClick={onPrint}>
             Print
-          </button>
-          <button className="btnPrimary" type="button" disabled={!allChecked} onClick={onMarkReviewed}>
+          </IosButton>
+          <IosButton variant="primary" size="sm" disabled={!allChecked} onClick={onMarkReviewed}>
             Sign / Mark reviewed
-          </button>
+          </IosButton>
         </div>
       </div>
 
       {error ? (
-        <div className="card" style={{ marginTop: 14, borderColor: "rgba(220, 38, 38, 0.25)" }}>
-          <div style={{ color: "crimson", fontWeight: 700 }}>Unable to load case</div>
-          <div style={{ color: "var(--ink-mute)", marginTop: 6 }}>{error}</div>
+        <div className="card app-card--warn" style={{ marginTop: 14 }}>
+          <div className="app-text-error" style={{ fontWeight: 700 }}>Unable to load case</div>
+          <div className="app-text-muted" style={{ marginTop: 6 }}>{error}</div>
           <div style={{ marginTop: 10 }}>
-            <Link to="/upload" className="btn">
+            <IosLinkButton to="/upload" variant="secondary">
               Upload again
-            </Link>
+            </IosLinkButton>
           </div>
         </div>
       ) : null}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.05fr 0.95fr", gap: 14, marginTop: 14 }}>
+      <div className="app-reading-grid">
         <div className="card">
-          <div style={{ fontWeight: 900 }}>Scan review</div>
+          <div className="app-card-title">Scan review</div>
           <div style={{ marginTop: 10 }}>
             {pred?.scanBase64 ? (
               <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", border: "1px solid var(--line)" }}>
@@ -225,34 +226,22 @@ export default function ReadingMode() {
           </div>
 
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <Link to="/clinical-feedback" className="btn">
+            <IosLinkButton to="/clinical-feedback" variant="secondary">
               Give feedback
-            </Link>
-            <Link to="/report" className="btn btnOutline">
+            </IosLinkButton>
+            <IosLinkButton to="/report" variant="ghost">
               Open report page
-            </Link>
+            </IosLinkButton>
           </div>
         </div>
 
         <div style={{ display: "grid", gap: 14 }}>
           <div className="card">
-            <div style={{ fontWeight: 900 }}>Report draft</div>
-            <div style={{ marginTop: 8, color: "var(--ink-mute)", fontSize: 13 }}>
+            <div className="app-card-title">Report draft</div>
+            <div className="app-text-muted" style={{ marginTop: 8, fontSize: 13 }}>
               Review the draft text and verify it matches imaging findings and clinical context.
             </div>
-            <pre
-              style={{
-                marginTop: 12,
-                whiteSpace: "pre-wrap",
-                lineHeight: 1.55,
-                background: "rgba(2,6,23,0.03)",
-                border: "1px solid var(--line)",
-                padding: 12,
-                borderRadius: 12,
-                minHeight: 180,
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-              }}
-            >
+            <pre className="app-report-pre" style={{ minHeight: 180 }}>
               {report?.report_text ||
                 "No report draft stored for this case in this session.\n\nTip: generate a report on the Report page; it will appear here automatically."}
             </pre>
@@ -264,7 +253,7 @@ export default function ReadingMode() {
           </div>
 
           <div className="card">
-            <div style={{ fontWeight: 900 }}>Sign-off checklist</div>
+            <div className="app-card-title">Sign-off checklist</div>
             <div style={{ marginTop: 10, display: "grid", gap: 10, color: "var(--ink)" }}>
               <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                 <input type="checkbox" checked={check1} onChange={(e) => setCheck1(e.target.checked)} />
@@ -284,12 +273,12 @@ export default function ReadingMode() {
             </div>
 
             <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button className="btn" type="button" onClick={() => setDrawerOpen(true)}>
+              <IosButton variant="secondary" onClick={() => setDrawerOpen(true)}>
                 View evidence
-              </button>
-              <button className="btnPrimary" type="button" disabled={!allChecked} onClick={onMarkReviewed}>
+              </IosButton>
+              <IosButton variant="primary" disabled={!allChecked} onClick={onMarkReviewed}>
                 Sign / Mark reviewed
-              </button>
+              </IosButton>
             </div>
           </div>
         </div>
@@ -301,7 +290,7 @@ export default function ReadingMode() {
         title={`Case ${studyId}`}
         citations={citations}
       />
-    </div>
+    </AppPage>
   );
 }
 

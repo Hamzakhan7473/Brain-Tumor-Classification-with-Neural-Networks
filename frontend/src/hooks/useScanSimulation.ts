@@ -99,6 +99,12 @@ function coerceWmh(raw: unknown): WMHResult | undefined {
     risk_level: rk,
     threshold_used: num("threshold_used", 0.5),
     note: str("note", ""),
+    volume_cc_periventricular:
+      typeof o["volume_cc_periventricular"] === "number" ? (o["volume_cc_periventricular"] as number) : undefined,
+    volume_cc_deep_subcortical:
+      typeof o["volume_cc_deep_subcortical"] === "number" ? (o["volume_cc_deep_subcortical"] as number) : undefined,
+    volume_cc_infratentorial:
+      typeof o["volume_cc_infratentorial"] === "number" ? (o["volume_cc_infratentorial"] as number) : undefined,
   };
 }
 

@@ -9,7 +9,7 @@ def build_report(
     image_path_or_bytes,
     prediction: str,
     confidence: float,
-    provider: str = "gemini",
+    provider: Optional[str] = None,
     model_id: Optional[str] = None,
     *,
     evidence_context: Optional[str] = None,

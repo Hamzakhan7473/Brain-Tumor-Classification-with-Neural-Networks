@@ -19,6 +19,7 @@ class MongoSettings:
     audit_log_collection: str
     shadow_cases_collection: str
     reports_collection: str
+    bicr_cases_collection: str
     enable: bool
 
 
@@ -43,6 +44,7 @@ def load_mongo_settings() -> MongoSettings:
         audit_log_collection=os.environ.get("MONGODB_COLLECTION_AUDIT_LOG", "audit_log"),
         shadow_cases_collection=os.environ.get("MONGODB_COLLECTION_SHADOW_CASES", "shadow_cases"),
         reports_collection=os.environ.get("MONGODB_COLLECTION_REPORTS", "report_drafts"),
+        bicr_cases_collection=os.environ.get("MONGODB_COLLECTION_BICR", "bicr_cases"),
         enable=enable,
     )
 

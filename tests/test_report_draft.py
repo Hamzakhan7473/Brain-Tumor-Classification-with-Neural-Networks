@@ -57,6 +57,9 @@ def wmh_model_run():
             "volume_cc": 10.9,
             "lesion_voxels": 1200,
             "age_matched_percentile": "75th percentile",
+            "volume_cc_periventricular": 4.2,
+            "volume_cc_deep_subcortical": 5.1,
+            "volume_cc_infratentorial": 1.6,
         },
     }
 
@@ -113,6 +116,12 @@ def test_draft_measurements_match_model_output(client, wmh_model_run):
     wmh = next(m for m in measurements if m["id"] == "wmh_volume_cc")
     assert wmh["value"] == 10.9
     assert wmh["audit_ref"] is not None
+    pv = next(m for m in measurements if m["id"] == "wmh_volume_periventricular_cc")
+    assert pv["value"] == 4.2
+    deep = next(m for m in measurements if m["id"] == "wmh_volume_deep_subcortical_cc")
+    assert deep["value"] == 5.1
+    infra = next(m for m in measurements if m["id"] == "wmh_volume_infratentorial_cc")
+    assert infra["value"] == 1.6
 
 
 def test_section_edit_creates_history(client, fresh_draft_id):

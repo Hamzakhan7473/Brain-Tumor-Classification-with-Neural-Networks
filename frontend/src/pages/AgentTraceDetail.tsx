@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import EvidenceDrawer, { EvidenceCitation } from "../components/EvidenceDrawer";
+import { AppPage } from "../components/layout/AppPage";
+import { IosButton } from "../components/ui/IosButton";
 
 type Step = {
   id: string;
@@ -59,50 +61,43 @@ export default function AgentTraceDetail() {
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
 
   return (
-    <div className="container">
-      <h2 style={{ marginTop: 16 }}>Agent trace · demo</h2>
-      <p style={{ color: "var(--ink-mute)", marginTop: 4 }}>
-        Inspect how the multi-agent swarm reached an output, step by step, with citations for chart and policy evidence.
-      </p>
-
-      <div className="grid2" style={{ marginTop: 14 }}>
+    <AppPage
+      title="Agent trace"
+      subtitle="Inspect how the multi-agent swarm reached an output, step by step, with citations for chart and policy evidence."
+    >
+      <div className="app-grid-2">
         <div className="card">
-          <div style={{ fontWeight: 800 }}>Steps</div>
+          <div className="app-card-title">Steps</div>
           <ul style={{ listStyle: "none", padding: 0, marginTop: 10, fontSize: 13 }}>
             {steps.map((s) => (
               <li key={s.id}>
-                <button
-                  type="button"
-                  className="btn"
+                <IosButton
+                  variant="secondary"
+                  fullWidth
                   onClick={() => setSelectedStep(s)}
-                  style={{
-                    width: "100%",
-                    justifyContent: "flex-start",
-                    marginBottom: 6,
-                    background: selectedStep.id === s.id ? "var(--green-50)" : "var(--white)",
-                  }}
+                  className={selectedStep.id === s.id ? "app-list-item--selected" : ""}
+                  style={{ justifyContent: "flex-start", marginBottom: 6 }}
                 >
                   {s.label}
-                </button>
+                </IosButton>
               </li>
             ))}
           </ul>
         </div>
 
         <div className="card">
-          <div style={{ fontWeight: 800 }}>Step detail</div>
-          <p style={{ marginTop: 8, fontSize: 13, color: "var(--ink-mute)" }}>{selectedStep.summary}</p>
+          <div className="app-card-title">Step detail</div>
+          <p className="app-card-sub" style={{ marginTop: 8 }}>{selectedStep.summary}</p>
 
           <div style={{ marginTop: 12 }}>
-            <button className="btn" type="button" onClick={() => setDrawerOpen(true)}>
+            <IosButton variant="secondary" onClick={() => setDrawerOpen(true)}>
               View evidence
-            </button>
+            </IosButton>
           </div>
         </div>
       </div>
 
       <EvidenceDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} title="Agent evidence" citations={citations} />
-    </div>
+    </AppPage>
   );
 }
-

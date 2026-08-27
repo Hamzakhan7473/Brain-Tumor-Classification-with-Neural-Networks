@@ -23,6 +23,7 @@ from src.inference.input_validator import validate_for_model
 from src.inference.model_registry import MODEL_DEFS, predict_with_uncertainty, registry, segmentation_model_keys
 from src.inference.percentile_wm import volume_percentile_for_age
 from src.inference.preprocessing import load_wmh_nifti_dual_channel
+from src.inference.wmh_regional import regional_wmh_volumes_cc
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _DIST_STATS_PATH = Path(__file__).resolve().parent / "data" / "distribution_stats.json"
@@ -175,6 +176,13 @@ def run_predict_3d(
 
     pct, pct_note = volume_percentile_for_age(wmh_volume_cc, int(ctx["age"]), str(ctx.get("sex") or ""))
 
+    flair_vol = np.asarray(volume[0, ..., 0], dtype=np.float32)
+    regional = regional_wmh_volumes_cc(
+        lesion_mask,
+        voxel_vol_mm3=voxel_vol_mm3,
+        flair_volume=flair_vol,
+    )
+
     warnings: list[str] = []
     warnings.extend(vr.warnings or [])
     warnings.extend(ood_pack.get("warnings") or [])
@@ -182,10 +190,13 @@ def run_predict_3d(
         warnings.append(
             "Lesion probabilities occupy an ambiguous band — corroborate with manual lesion review.",
         )
+    warnings.append(
+        "Regional WMH volumes use geometric heuristic (not atlas-registered); research use only.",
+    )
 
     sal_b64 = None
     try:
-        sal_b64 = _wmh_slice_overlay(mean_les, volume[0, ..., 0])
+        sal_b64 = _wmh_slice_overlay(mean_les, flair_vol)
     except Exception:
         pass
 
@@ -238,9 +249,14 @@ def run_predict_3d(
             "threshold_used": threshold,
             "age_matched_percentile": pct,
             "percentile_note": pct_note,
+            "volume_cc_periventricular": regional["volume_cc_periventricular"],
+            "volume_cc_deep_subcortical": regional["volume_cc_deep_subcortical"],
+            "volume_cc_infratentorial": regional["volume_cc_infratentorial"],
+            "regional": regional,
             "note": (
                 "Single-series upload duplicated for both encoder channels vs training FLAIR+T1; "
-                "paired FLAIR/T1 MICCAI-style uploads preferred."
+                "paired FLAIR/T1 MICCAI-style uploads preferred. "
+                + str(regional.get("note") or "")
             ),
         },
         "saliency_map_b64": sal_b64,

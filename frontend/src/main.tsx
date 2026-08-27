@@ -4,6 +4,9 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./styles/global.css";
 import "./styles/ios-tokens.css";
+import "./styles/app-modern.css";
+import "./styles/app-page.css";
+import "./styles/glass-tiles.css";
 import "./styles/scan-animations.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

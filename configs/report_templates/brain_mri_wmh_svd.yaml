@@ -11,12 +11,19 @@ comparison_default: "No prior brain MRI available for comparison."
 finding_regions:
   - id: white_matter
     label: White matter
-    measurement_ids: [wmh_volume_cc, lesion_voxels]
+    measurement_ids:
+      - wmh_volume_cc
+      - wmh_volume_periventricular_cc
+      - wmh_volume_deep_subcortical_cc
+      - wmh_volume_infratentorial_cc
+      - lesion_voxels
+      - age_percentile
     ai_prompt: |
       Describe the white matter findings in 1-2 sentences. Use the
-      provided WMH volume and voxel count. State whether the
-      distribution is symmetric, focal, or diffuse based on the
-      saliency map. Do not invent details not in the model output.
+      provided total and regional WMH volumes (periventricular, deep/
+      subcortical, infratentorial). State whether distribution is
+      predominantly periventricular or deep. Do not invent details
+      not in the model output.
     fallback: "White matter signal is unremarkable."
 
   - id: ventricles
@@ -32,7 +39,7 @@ finding_regions:
 
   - id: posterior_fossa
     label: Posterior fossa
-    measurement_ids: []
+    measurement_ids: [wmh_volume_infratentorial_cc]
     fallback: "Brainstem and cerebellum unremarkable."
 
   - id: vasculature
@@ -57,26 +64,30 @@ impression_rules:
     fazekas_grade: 1
     template: |
       Scattered punctate white matter hyperintensities measuring
-      {{wmh_volume_cc}} cc total, consistent with mild small vessel
+      {{wmh_volume_cc}} cc total (periventricular {{wmh_volume_periventricular_cc}} cc,
+      deep/subcortical {{wmh_volume_deep_subcortical_cc}} cc,
+      infratentorial {{wmh_volume_infratentorial_cc}} cc), consistent with mild small vessel
       disease. **Fazekas-equivalent grade {{fazekas_grade}}** [cite:fazekas].
 
   - condition: "wmh_volume_cc < 15.0"
     severity: moderate
     fazekas_grade: 2
     template: |
-      Moderate cerebral small vessel disease, with confluent
-      periventricular and deep white matter hyperintensities measuring
-      {{wmh_volume_cc}} cc total. **Fazekas-equivalent grade {{fazekas_grade}}**
-      [cite:fazekas].
+      Moderate cerebral small vessel disease, with white matter hyperintensities measuring
+      {{wmh_volume_cc}} cc total (periventricular {{wmh_volume_periventricular_cc}} cc,
+      deep/subcortical {{wmh_volume_deep_subcortical_cc}} cc,
+      infratentorial {{wmh_volume_infratentorial_cc}} cc).
+      **Fazekas-equivalent grade {{fazekas_grade}}** [cite:fazekas].
 
   - condition: "wmh_volume_cc >= 15.0"
     severity: severe
     fazekas_grade: 3
     template: |
-      Severe cerebral small vessel disease with confluent
-      periventricular and deep white matter hyperintensities measuring
-      {{wmh_volume_cc}} cc total. **Fazekas-equivalent grade {{fazekas_grade}}**
-      [cite:fazekas].
+      Severe cerebral small vessel disease with confluent white matter hyperintensities measuring
+      {{wmh_volume_cc}} cc total (periventricular {{wmh_volume_periventricular_cc}} cc,
+      deep/subcortical {{wmh_volume_deep_subcortical_cc}} cc,
+      infratentorial {{wmh_volume_infratentorial_cc}} cc).
+      **Fazekas-equivalent grade {{fazekas_grade}}** [cite:fazekas].
 
 recommendation_rules:
   - severity_in: [moderate, severe]

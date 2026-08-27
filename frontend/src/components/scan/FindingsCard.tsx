@@ -39,10 +39,10 @@ type ReportMetricRow = {
 };
 
 function severityColorCss(sev: ValueTone): string {
-  if (sev === "danger") return "var(--green-900)";
-  if (sev === "warning") return "var(--green-600)";
-  if (sev === "ok") return "var(--green-700)";
-  return "var(--ink-mid)";
+  if (sev === "danger") return "#dc2626";
+  if (sev === "warning") return "#d97706";
+  if (sev === "ok") return "var(--modern-ink, #09090b)";
+  return "var(--modern-ink-soft, #3f3f46)";
 }
 
 function capitalizeLeading(s: string): string {
@@ -198,13 +198,25 @@ function buildMetricsWmhRows(w: WMHResult): ReportMetricRow[] {
     w.volume_cc_ci_95 && w.volume_cc_ci_95.length >= 2
       ? `${w.volume_cc.toFixed(1)} cc (95% CI: ${w.volume_cc_ci_95[0].toFixed(1)} – ${w.volume_cc_ci_95[1].toFixed(1)} cc)`
       : `${w.volume_cc.toFixed(1)} cc`;
-  return [
+  const rows: ReportMetricRow[] = [
     {
       label: "WMH volume",
       value: volPretty,
       severity: w.volume_cc >= 15 ? "warning" : "neutral",
       barWidth: volPct,
     },
+  ];
+  const pv = w.volume_cc_periventricular;
+  const deep = w.volume_cc_deep_subcortical;
+  const infra = w.volume_cc_infratentorial;
+  if (typeof pv === "number" || typeof deep === "number" || typeof infra === "number") {
+    rows.push({
+      label: "Regional volumes",
+      value: `PV ${(pv ?? 0).toFixed(1)} · deep ${(deep ?? 0).toFixed(1)} · infra ${(infra ?? 0).toFixed(1)} cc`,
+      severity: "neutral",
+    });
+  }
+  rows.push(
     {
       label: "Severity grade",
       value: `${w.severity_grade} · grade ${fz}`,
@@ -221,7 +233,8 @@ function buildMetricsWmhRows(w: WMHResult): ReportMetricRow[] {
       value: `${w.lesion_voxels.toLocaleString()} voxels`,
       severity: "neutral",
     },
-  ];
+  );
+  return rows;
 }
 
 function buildMetrics2dRows(findings: ScanFindings, tumorHighlight: boolean): ReportMetricRow[] {

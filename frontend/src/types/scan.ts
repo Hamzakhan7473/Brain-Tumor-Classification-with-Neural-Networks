@@ -47,6 +47,14 @@ export interface ClassProb {
 export type WMHSeverity = "Normal" | "Mild" | "Moderate" | "Severe";
 export type WMHRisk = "Low" | "Moderate" | "High" | "Very High";
 
+export interface WMHRegionalVolumes {
+  volume_cc_periventricular: number;
+  volume_cc_deep_subcortical: number;
+  volume_cc_infratentorial: number;
+  method?: string;
+  note?: string;
+}
+
 export interface WMHResult {
   volume_cc: number;
   volume_cc_ci_95?: [number, number];
@@ -61,6 +69,10 @@ export interface WMHResult {
   risk_level: WMHRisk;
   threshold_used: number;
   note: string;
+  volume_cc_periventricular?: number;
+  volume_cc_deep_subcortical?: number;
+  volume_cc_infratentorial?: number;
+  regional?: WMHRegionalVolumes;
 }
 
 export interface ScanFindings {

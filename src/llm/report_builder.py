@@ -86,14 +86,19 @@ def _measures_dict(measurements: list[dict]) -> dict[str, float]:
     return d
 
 
-def _gemini_text(prompt: str, max_tokens: int = 200) -> str:
+def _llm_text(prompt: str, max_tokens: int = 200) -> str:
+    """Text-only generation via the resolved provider (Bedrock or Gemini)."""
     try:
-        client = get_llm_client(provider="gemini")
+        client = get_llm_client()
         gen_cfg = {"max_output_tokens": max_tokens}
         resp = client.generate_content(prompt, generation_config=gen_cfg)
         return (getattr(resp, "text", None) or "").strip()
     except Exception:
         return ""
+
+
+# Backwards-compatible alias (older call sites / tests)
+_gemini_text = _llm_text
 
 
 class ReportBuilder:
@@ -153,6 +158,25 @@ class ReportBuilder:
                     "source": mname,
                 }
             )
+            for mid, label, key in (
+                ("wmh_volume_periventricular_cc", "WMH volume · periventricular", "volume_cc_periventricular"),
+                ("wmh_volume_deep_subcortical_cc", "WMH volume · deep/subcortical", "volume_cc_deep_subcortical"),
+                ("wmh_volume_infratentorial_cc", "WMH volume · infratentorial", "volume_cc_infratentorial"),
+            ):
+                raw = wmh.get(key)
+                if raw is None and isinstance(wmh.get("regional"), dict):
+                    raw = wmh["regional"].get(key)
+                m.append(
+                    {
+                        "id": mid,
+                        "label": label,
+                        "value": round(float(raw if raw is not None else 0.0), 4),
+                        "unit": "cc",
+                        "severity": None,
+                        "audit_ref": aid,
+                        "source": f"{mname} regional",
+                    }
+                )
             pct = wmh.get("age_matched_percentile")
             if pct is not None:
                 m.append(
@@ -218,6 +242,49 @@ class ReportBuilder:
             }
         )
         return m
+
+    def _longitudinal_measurements(self, longitudinal: dict[str, Any], audit_id: str) -> list[dict]:
+        out: list[dict] = []
+        delta = longitudinal.get("volume_delta_cc")
+        if delta is not None:
+            out.append(
+                {
+                    "id": "wmh_volume_delta_cc",
+                    "label": "WMH volume change vs prior",
+                    "value": round(float(delta), 4),
+                    "unit": "cc",
+                    "severity": None,
+                    "audit_ref": audit_id,
+                    "source": "longitudinal",
+                }
+            )
+        pct = longitudinal.get("volume_pct_change")
+        if pct is not None:
+            out.append(
+                {
+                    "id": "wmh_volume_pct_change",
+                    "label": "WMH volume % change vs prior",
+                    "value": round(float(pct), 2),
+                    "unit": "%",
+                    "severity": None,
+                    "audit_ref": audit_id,
+                    "source": "longitudinal",
+                }
+            )
+        prior = longitudinal.get("prior_volume_cc")
+        if prior is not None:
+            out.append(
+                {
+                    "id": "wmh_volume_prior_cc",
+                    "label": "WMH volume · prior timepoint",
+                    "value": round(float(prior), 4),
+                    "unit": "cc",
+                    "severity": None,
+                    "audit_ref": audit_id,
+                    "source": "longitudinal",
+                }
+            )
+        return out
 
     def _volume_severity(self, vol_cc: float) -> str:
         if vol_cc < 1.0:
@@ -296,7 +363,13 @@ class ReportBuilder:
                 else None
             ) or "3T"
             text = text.replace("{{scanner_field_strength}}", str(sf))
-        if name == "comparison" and extra_hint:
+        if name == "comparison" and isinstance(case.get("longitudinal"), dict):
+            lon = case["longitudinal"]
+            text = str(lon.get("comparison_summary") or text)
+            note = lon.get("note")
+            if note:
+                text = f"{text}\n\n{note}"
+        elif name == "comparison" and extra_hint:
             text = f"{default_text}\n\nPrior studies noted: {extra_hint}."
         return {
             "name": name,
@@ -340,7 +413,7 @@ Model findings for this region:
 Write 1-2 sentences. Reference measurements using {{{{measure:ID}}}} placeholders only (e.g. {{{{measure:wmh_volume_cc}}}}).
 Do not write numeric literals except inside those placeholders."""
 
-        raw = _gemini_text(prompt, max_tokens=160)
+        raw = _llm_text(prompt, max_tokens=160)
         validated = self._validate_no_invented_numbers(raw, relevant) if raw else None
         text = validated if validated else region.get("fallback", f"{region['label']}: see findings.")
         mids = [m["id"] for m in relevant]
@@ -352,6 +425,7 @@ Do not write numeric literals except inside those placeholders."""
         measurements: list[dict],
         model_run: dict,
         citation_ids: dict[str, int],
+        case: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         impressions: list[dict[str, Any]] = []
         tpl = severity_bucket.get("template") or ""
@@ -393,12 +467,48 @@ Do not write numeric literals except inside those placeholders."""
                 "citations": imp_cites,
             }
         )
+        lon = (case or {}).get("longitudinal") if isinstance(case, dict) else None
+        if isinstance(lon, dict) and lon.get("volume_delta_cc") is not None:
+            delta = float(lon["volume_delta_cc"])
+            pct = lon.get("volume_pct_change")
+            direction = str(lon.get("direction") or "stable")
+            if direction == "stable":
+                lon_text = (
+                    "Longitudinal comparison: WMH burden is **stable** vs prior "
+                    f"({{measure:wmh_volume_prior_cc}} cc → {{measure:wmh_volume_cc}} cc, "
+                    "Δ {{measure:wmh_volume_delta_cc}} cc)."
+                )
+            elif pct is not None:
+                lon_text = (
+                    f"Longitudinal comparison: WMH burden **{direction}** vs prior "
+                    f"({{measure:wmh_volume_prior_cc}} cc → {{measure:wmh_volume_cc}} cc, "
+                    "Δ {{measure:wmh_volume_delta_cc}} cc, {{measure:wmh_volume_pct_change}}% change)."
+                )
+            else:
+                lon_text = (
+                    f"Longitudinal comparison: WMH burden **{direction}** vs prior "
+                    f"({{measure:wmh_volume_prior_cc}} cc → {{measure:wmh_volume_cc}} cc, "
+                    "Δ {{measure:wmh_volume_delta_cc}} cc)."
+                )
+            impressions.append(
+                {
+                    "order": 2,
+                    "text": lon_text,
+                    "measurements": [
+                        "wmh_volume_prior_cc",
+                        "wmh_volume_cc",
+                        "wmh_volume_delta_cc",
+                        "wmh_volume_pct_change",
+                    ],
+                    "citations": [],
+                }
+            )
         if "wmh_volume_cc" in _measures_dict(measurements) and isinstance(model_run.get("wmh"), dict):
             wmh = model_run["wmh"]
             if wmh.get("age_matched_percentile") is not None:
                 impressions.append(
                     {
-                        "order": 2,
+                        "order": len(impressions) + 1,
                         "text": (
                             "WMH burden is at the {{measure:age_percentile}} for "
                             "age-matched ADNI cognitively normal cohort, "
@@ -456,6 +566,9 @@ Do not write numeric literals except inside those placeholders."""
 
     def build_draft(self, case: dict[str, Any], model_run: dict) -> dict[str, Any]:
         measurements = self._extract_measurements(model_run)
+        aid = str(model_run.get("audit_id") or model_run.get("model_run_id") or "unknown")
+        if isinstance(case.get("longitudinal"), dict):
+            measurements.extend(self._longitudinal_measurements(case["longitudinal"], aid))
         rules = list(self.template.get("impression_rules") or [])
         severity_bucket = self._evaluate_impression_rules(rules, measurements)
         severity = str(severity_bucket.get("severity") or "normal")
@@ -496,7 +609,7 @@ Do not write numeric literals except inside those placeholders."""
         sections.append(findings_section)
 
         citations, cite_map = self._extract_citations()
-        impressions = self._build_impressions(severity_bucket, measurements, model_run, cite_map)
+        impressions = self._build_impressions(severity_bucket, measurements, model_run, cite_map, case=case)
         for im in impressions:
             txt = im["text"]
             for mid in im.get("measurements") or []:
@@ -580,6 +693,7 @@ Do not write numeric literals except inside those placeholders."""
                 "clinical_context": case.get("clinical_context"),
                 "prior_studies": case.get("prior_studies"),
                 "scanner_field_strength": case.get("scanner_field_strength") or "3T",
+                "longitudinal": case.get("longitudinal"),
             },
             "model_run_snapshot": dict(model_run),
         }
