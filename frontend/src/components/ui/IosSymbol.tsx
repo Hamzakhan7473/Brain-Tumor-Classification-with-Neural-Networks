@@ -15,7 +15,8 @@ export type IosSymbolName =
   | "tray.full"
   | "camera"
   | "folder"
-  | "cube";
+  | "cube"
+  | "sparkle";
 
 type Props = {
   name: IosSymbolName;
@@ -26,6 +27,13 @@ type Props = {
 
 function pathsFor(name: IosSymbolName): React.ReactNode {
   switch (name) {
+    case "sparkle":
+      return (
+        <path
+          d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"
+          strokeLinejoin="round"
+        />
+      );
     case "chart.bar":
       return (
         <>

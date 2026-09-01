@@ -41,15 +41,13 @@
   letter-spacing: 0.01em;
 }
 
-/* Cards — frosted glass */
+/* Cards */
 .upload-page .upload-card,
 .upload-page .ns-card-frame {
   border-radius: var(--modern-radius-lg, 20px);
-  background: var(--glass-surface, rgba(255, 255, 255, 0.62));
-  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.72));
+  background: var(--modern-surface, #fff);
+  border: 1px solid var(--modern-border, #e4e4e7);
   box-shadow: var(--modern-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.04));
-  backdrop-filter: var(--glass-blur, blur(24px) saturate(1.35));
-  -webkit-backdrop-filter: var(--glass-blur, blur(24px) saturate(1.35));
 }
 
 .upload-page .ios-soft-shadow {
@@ -179,12 +177,10 @@
   margin-top: -4px;
 }
 
-/* Drop zone — frosted dashed */
+/* Drop zone — neutral dashed */
 .upload-page .upload-zone-ios {
-  border-color: var(--glass-border, rgba(255, 255, 255, 0.72));
-  background: var(--glass-surface, rgba(255, 255, 255, 0.5));
-  backdrop-filter: blur(16px) saturate(1.25);
-  -webkit-backdrop-filter: blur(16px) saturate(1.25);
+  border-color: var(--modern-border-strong, #d4d4d8);
+  background: var(--modern-hover, #f4f4f5);
   transition:
     border-color 0.15s ease,
     background 0.15s ease,
@@ -194,7 +190,7 @@
 .upload-page .upload-zone-ios:hover,
 .upload-page .upload-zone-ios:focus-within {
   border-color: var(--modern-ink-soft, #3f3f46);
-  background: var(--glass-surface-strong, rgba(255, 255, 255, 0.78));
+  background: var(--modern-surface, #fff);
   box-shadow: var(--modern-shadow-sm);
 }
 
@@ -228,13 +224,11 @@
 .upload-page .ios-input-row {
   width: 100%;
   border-radius: var(--modern-radius, 14px);
-  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.72));
-  background: var(--glass-surface-strong, rgba(255, 255, 255, 0.78));
+  border: 1px solid var(--modern-border, #e4e4e7);
+  background: var(--modern-surface, #fff);
   color: var(--modern-ink, #09090b);
   padding: 10px 12px;
   font-size: 0.875rem;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -447,6 +441,9 @@
 
 .upload-result__actions {
   margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 /* Dark mode */

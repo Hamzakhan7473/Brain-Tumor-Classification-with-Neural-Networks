@@ -303,6 +303,7 @@ def predict_legacy_tuple(
     infer_meta = {
         "input_shape": out["input_shape"],
         "preprocessing_applied": out.get("preprocessing_applied"),
+        "saliency_map_b64": out.get("saliency_map_b64"),
     }
     return (
         label,

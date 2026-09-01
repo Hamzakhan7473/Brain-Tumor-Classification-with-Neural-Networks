@@ -9,7 +9,7 @@ Provider selection:
 """
 import io
 import os
-from typing import Optional
+from typing import Any, Optional
 
 # Default to newest generally-available Gemini
 DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
@@ -63,7 +63,12 @@ def get_llm_client(provider: Optional[str] = None, model_id: Optional[str] = Non
 
 
 def generate_with_image(client, image_bytes_or_path, prompt: str, **kwargs):
-    """Send image + text prompt to the LLM and return response text."""
+    """Low-level image+text helper.
+
+    Clinical report/explanation paths must not call this with raw MRI /
+    DICOM pixels (FDA Non-Device CDS Criterion 1). Use
+    ``generate_clinical_prose(..., visual_overlay=gradcam_png)`` instead.
+    """
     # Bedrock client accepts raw bytes / paths / PIL images directly.
     from src.llm.bedrock import BedrockClient
 
@@ -82,3 +87,67 @@ def generate_with_image(client, image_bytes_or_path, prompt: str, **kwargs):
         response = client.generate_content([prompt, img], generation_config=kwargs)
         return response.text if response else ""
     return ""
+
+
+def generate_clinical_prose(
+    prompt: str,
+    *,
+    query: str,
+    grounding_payload: dict,
+    max_tokens: int = 200,
+    visual_overlay: Any = None,
+    provider: Optional[str] = None,
+    model_id: Optional[str] = None,
+) -> tuple[str, dict]:
+    """
+    Generate report/explanation prose, using Bedrock contextual grounding when a
+    guardrail is configured. Always returns (text, grounding_meta); meta is empty
+    when Guardrails are unset so local dev keeps working.
+
+    ``visual_overlay`` may be a Grad-CAM / saliency PNG. Raw diagnostic scan
+    bytes must never be passed (FDA Non-Device CDS Criterion 1).
+    """
+    from src.llm.bedrock import BedrockClient, serialize_grounding_source
+    from src.llm.cds_constraint import CDS_NARRATION_PREAMBLE, MODEL_OVERLAY_CAPTION
+
+    if CDS_NARRATION_PREAMBLE not in (prompt or ""):
+        prompt = f"{CDS_NARRATION_PREAMBLE}\n\n{prompt}"
+    if visual_overlay is not None and MODEL_OVERLAY_CAPTION not in (prompt or ""):
+        prompt = f"{MODEL_OVERLAY_CAPTION}\n\n{prompt}"
+
+    meta: dict = {}
+    try:
+        client = get_llm_client(provider=provider, model_id=model_id)
+    except Exception:
+        return "", meta
+
+    gen_cfg = {"max_output_tokens": max_tokens}
+    use_grounded = isinstance(client, BedrockClient) and bool(getattr(client, "guardrail_id", ""))
+    if use_grounded:
+        try:
+            source = serialize_grounding_source(grounding_payload)
+            grounded = client.generate_grounded_content(
+                query=query,
+                grounding_source=source,
+                prompt=prompt,
+                generation_config=gen_cfg,
+                image=visual_overlay,
+            )
+            return (grounded.text or "").strip(), grounded.to_meta()
+        except ValueError:
+            raise
+        except Exception:
+            # Guardrail path failed; fall through to ungrounded generate.
+            pass
+
+    try:
+        if visual_overlay is not None:
+            text = generate_with_image(client, visual_overlay, prompt, **gen_cfg) or ""
+        elif hasattr(client, "generate_content"):
+            resp = client.generate_content(prompt, generation_config=gen_cfg)
+            text = (getattr(resp, "text", None) or "").strip()
+        else:
+            text = ""
+    except Exception:
+        text = ""
+    return text, meta

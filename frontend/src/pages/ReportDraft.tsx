@@ -3,7 +3,11 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { diffWords } from "diff";
 import "./ReportDraft.css";
 import { AppPage } from "../components/layout/AppPage";
+import { AttestationGate, canFinalize } from "../components/ui/AttestationGate";
+import { ProviderBadge, type ContentProvenance } from "../components/ui/ProviderBadge";
+import { useFeatures } from "../hooks/useFeatures";
 import {
+  attestReportDraft,
   fetchReportDraftPdfBlob,
   getReportDraft,
   patchReportDraftSection,
@@ -32,7 +36,7 @@ function sourcePillStyle(source: string | undefined): React.CSSProperties {
         : s === "measured"
           ? "var(--modern-ink-soft)"
           : s === "edited"
-            ? "var(--modern-ink-soft)"
+            ? "#b45309"
             : "var(--ink-soft)";
   return {
     fontSize: 11,
@@ -41,6 +45,8 @@ function sourcePillStyle(source: string | undefined): React.CSSProperties {
     borderRadius: 999,
     border: "1px solid var(--line)",
     color,
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.04em",
   };
 }
 
@@ -86,6 +92,9 @@ export default function ReportDraft() {
   const [signerNpi, setSignerNpi] = useState("");
   const [signAck, setSignAck] = useState(false);
   const [signResult, setSignResult] = useState<{ audit_id: string; text_hash: string } | null>(null);
+  const [attestBusy, setAttestBusy] = useState(false);
+  const [attestErr, setAttestErr] = useState<string | null>(null);
+  const { llmProvider } = useFeatures();
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -146,6 +155,20 @@ export default function ReportDraft() {
       setErr(e instanceof Error ? e.message : "Regenerate failed");
     } finally {
       setRegenBusy(null);
+    }
+  };
+
+  const handleAttest = async (attestedBy: string, attestationText: string) => {
+    if (!reportId) return;
+    setAttestErr(null);
+    setAttestBusy(true);
+    try {
+      await attestReportDraft(reportId, { attested_by: attestedBy, attestation_text: attestationText });
+      await load();
+    } catch (e) {
+      setAttestErr(e instanceof Error ? e.message : "Attestation failed");
+    } finally {
+      setAttestBusy(false);
     }
   };
 
@@ -210,6 +233,10 @@ export default function ReportDraft() {
           <span className="text-ios-footnote" style={{ color: "var(--ink-mute)" }}>
             Study {String(report?.study_uid || reportId)} · Template {String(report?.template_id || "—")}
           </span>
+          <ProviderBadge
+            provider={llmProvider}
+            provenance={(report?.provenance as ContentProvenance | undefined) || null}
+          />
         </div>
 
         {err && (
@@ -239,7 +266,11 @@ export default function ReportDraft() {
             </div>
 
             {sections.map((s) => (
-              <section key={s.name} className="report-draft-section" id={`sec-${s.name}`}>
+              <section
+                key={s.name}
+                className={`report-draft-section${s.source === "edited" ? " report-draft-section--edited" : s.source === "ai" ? " report-draft-section--ai" : ""}`}
+                id={`sec-${s.name}`}
+              >
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <div className="report-draft-section-title">{s.name}</div>
                   <span style={sourcePillStyle(s.source)}>{s.source || "—"}</span>
@@ -376,13 +407,34 @@ export default function ReportDraft() {
         </div>
 
         {!effectiveReadOnly && (
-          <div className="report-draft-footer">
-            <span className="text-ios-footnote" style={{ color: "var(--ink-mute)" }}>
-              {String(report?.disclaimer || "").slice(0, 120)}…
-            </span>
-            <button type="button" className="report-draft-btn" onClick={() => setSignOpen(true)}>
-              Approve &amp; sign
-            </button>
+          <div className="report-draft-footer" style={{ flexDirection: "column", alignItems: "stretch", gap: 12 }}>
+            <AttestationGate
+              attested={Boolean(report?.attested_at)}
+              attestedBy={typeof report?.attested_by === "string" ? report.attested_by : null}
+              attestedAt={typeof report?.attested_at === "string" ? report.attested_at : null}
+              busy={attestBusy}
+              error={attestErr}
+              onSubmit={handleAttest}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <span className="text-ios-footnote" style={{ color: "var(--ink-mute)" }}>
+                {String(report?.disclaimer || "").slice(0, 120)}…
+              </span>
+              <button
+                type="button"
+                className="report-draft-btn"
+                data-testid="finalize-sign"
+                disabled={!canFinalize(Boolean(report?.attested_at))}
+                title={
+                  canFinalize(Boolean(report?.attested_at))
+                    ? "Electronically sign the attested report"
+                    : "Submit clinician attestation before signing"
+                }
+                onClick={() => setSignOpen(true)}
+              >
+                Approve &amp; sign
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -436,7 +488,13 @@ export default function ReportDraft() {
               <button type="button" className="report-draft-btn report-draft-btn-ghost" onClick={() => setSignOpen(false)}>
                 Cancel
               </button>
-              <button type="button" className="report-draft-btn" disabled={!signerName || !signerRole || !signAck} onClick={() => void handleSign()}>
+              <button
+                type="button"
+                className="report-draft-btn"
+                data-testid="finalize-sign-confirm"
+                disabled={!signerName || !signerRole || !signAck || !canFinalize(Boolean(report?.attested_at))}
+                onClick={() => void handleSign()}
+              >
                 Sign
               </button>
             </div>

@@ -7,16 +7,11 @@
   --nsl-glass: rgba(255, 255, 255, 0.6);
   --nsl-glass-strong: rgba(255, 255, 255, 0.82);
   --nsl-glass-border: rgba(11, 12, 28, 0.08);
-  --nsl-cyan: #0891b2;
-  --nsl-violet: #7c3aed;
   --nsl-radius: 22px;
   min-height: 100dvh;
   color: var(--nsl-ink);
   font-family: var(--sans, system-ui, sans-serif);
-  /* Mostly white, with the aurora glowing faintly through */
-  background:
-    linear-gradient(rgba(250, 251, 253, 0.8), rgba(250, 251, 253, 0.88)),
-    url("/glass-backdrop.png") center / cover no-repeat fixed #fafbfd;
+  background: #fafafa;
 }
 
 .nsl-landing a {
@@ -27,8 +22,8 @@
   text-align: center;
   padding: 8px 16px;
   font-size: 13px;
-  background: rgba(8, 145, 178, 0.08);
-  border-bottom: 1px solid rgba(8, 145, 178, 0.18);
+  background: rgba(11, 12, 28, 0.04);
+  border-bottom: 1px solid rgba(11, 12, 28, 0.08);
   color: var(--nsl-ink-soft);
 }
 
@@ -75,10 +70,7 @@
 
 .nsl-logo-text em {
   font-style: normal;
-  background: linear-gradient(90deg, var(--nsl-cyan), var(--nsl-violet));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--nsl-muted);
 }
 
 .nsl-nav-links {
@@ -209,10 +201,7 @@
 }
 
 .nsl-grad {
-  background: linear-gradient(92deg, #0891b2 0%, #2563eb 40%, #7c3aed 75%, #c026d3 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--nsl-muted);
 }
 
 .nsl-hero-sub {
@@ -292,7 +281,7 @@
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #06b6d4, #8b5cf6);
+  background: var(--nsl-ink);
 }
 
 .nsl-preview-value {
@@ -348,7 +337,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  color: var(--nsl-cyan);
+  color: var(--nsl-muted);
 }
 
 .nsl-section-head h2 {
@@ -386,12 +375,12 @@
 .nsl-trio-card {
   border-radius: var(--nsl-radius);
   padding: 26px 22px;
-  min-height: 220px;
+  min-height: 200px;
   display: flex;
   flex-direction: column;
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 20px 50px rgba(11, 12, 28, 0.18);
+  background: #ffffff;
+  border: 1px solid rgba(11, 12, 28, 0.08);
+  box-shadow: 0 1px 2px rgba(11, 12, 28, 0.04);
 }
 
 .nsl-trio-icon {
@@ -400,11 +389,10 @@
   display: grid;
   place-items: center;
   border-radius: 15px;
-  background: rgba(255, 255, 255, 0.16);
-  border: 1px solid rgba(255, 255, 255, 0.26);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(11, 12, 28, 0.04);
+  border: 1px solid rgba(11, 12, 28, 0.08);
   margin-bottom: auto;
+  color: var(--nsl-ink);
 }
 
 .nsl-trio-card h3 {
@@ -417,7 +405,7 @@
   margin: 0;
   font-size: 0.875rem;
   line-height: 1.55;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--nsl-ink-soft);
 }
 
 /* Features */
@@ -531,11 +519,7 @@
   font-size: 1.6rem;
   font-weight: 700;
   letter-spacing: -0.04em;
-  background: linear-gradient(135deg, #0891b2, #7c3aed);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  opacity: 0.8;
+  color: rgba(11, 12, 28, 0.14);
 }
 
 .nsl-stage-tag {
@@ -574,7 +558,6 @@
   height: 72px;
   object-fit: contain;
   margin-bottom: 18px;
-  filter: drop-shadow(0 0 24px rgba(8, 145, 178, 0.35));
 }
 
 .nsl-cta h2 {

@@ -1,39 +1,30 @@
-/* iOS-style glass tiles — navigation & shortcuts (not primary CTAs) */
+/* Workflow tiles — minimalist neutral squircles (no gradients, no tints) */
 
 .glass-tile-panel {
   position: relative;
-  overflow: hidden;
   border-radius: 24px;
-  padding: 24px 20px 20px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.14);
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  overflow: visible;
 }
 
 .glass-tile-bg {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
+  display: none;
 }
 
 .glass-tile-title {
-  position: relative;
-  z-index: 1;
-  margin: 0 0 18px;
-  text-align: center;
-  font-family: var(--serif, Georgia, serif);
-  font-size: clamp(1.2rem, 3vw, 1.6rem);
-  font-weight: 400;
+  margin: 0 0 14px;
+  font-family: var(--sans, system-ui, sans-serif);
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
+  font-weight: 600;
   letter-spacing: -0.02em;
-  color: rgba(255, 255, 255, 0.96);
-  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.28);
+  color: var(--modern-ink, #18181b);
 }
 
 .glass-tile-row {
-  position: relative;
-  z-index: 1;
   display: flex;
-  gap: 12px;
+  gap: 10px;
   overflow-x: auto;
   padding-bottom: 4px;
   scrollbar-width: thin;
@@ -45,117 +36,58 @@
 }
 
 .glass-tile-row::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--modern-border, #e4e4e7);
   border-radius: 999px;
 }
 
 /* Tile — link or button */
 .glass-tile,
 button.glass-tile {
-  flex: 0 0 96px;
+  flex: 0 0 92px;
   aspect-ratio: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 9px;
   padding: 12px 8px;
-  border-radius: 20px;
+  border-radius: 18px;
   text-decoration: none;
-  color: #fff;
+  color: var(--modern-ink, #18181b);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.01em;
   font-family: var(--sans, system-ui, sans-serif);
-  background: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  backdrop-filter: blur(20px) saturate(1.4);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  background: var(--modern-surface, #ffffff);
+  border: 1px solid var(--modern-border, #e4e4e7);
   transition:
-    transform 0.15s ease,
-    background 0.15s ease,
-    box-shadow 0.15s ease;
+    border-color 0.15s ease,
+    background 0.15s ease;
   cursor: pointer;
   box-sizing: border-box;
 }
 
 a.glass-tile:visited {
-  color: #fff;
+  color: var(--modern-ink, #18181b);
+}
+
+.glass-tile svg {
+  opacity: 0.75;
+  flex-shrink: 0;
 }
 
 .glass-tile:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.24);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border-color: var(--modern-border-strong, #d4d4d8);
+  background: var(--modern-hover, #f4f4f5);
 }
 
 .glass-tile:active:not(:disabled) {
-  transform: scale(0.97);
+  transform: scale(0.98);
 }
 
 .glass-tile:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-
-.glass-tile svg {
-  opacity: 0.96;
-  flex-shrink: 0;
-}
-
-/* Per-tile color tints — neural aurora palette */
-.glass-tile--cyan {
-  background: rgba(72, 190, 228, 0.3);
-  border-color: rgba(140, 218, 240, 0.42);
-}
-
-.glass-tile--cyan:hover:not(:disabled) {
-  background: rgba(72, 190, 228, 0.42);
-}
-
-.glass-tile--teal {
-  background: rgba(45, 178, 162, 0.3);
-  border-color: rgba(120, 210, 198, 0.42);
-}
-
-.glass-tile--teal:hover:not(:disabled) {
-  background: rgba(45, 178, 162, 0.42);
-}
-
-.glass-tile--indigo {
-  background: rgba(92, 102, 212, 0.34);
-  border-color: rgba(152, 160, 235, 0.42);
-}
-
-.glass-tile--indigo:hover:not(:disabled) {
-  background: rgba(92, 102, 212, 0.46);
-}
-
-.glass-tile--violet {
-  background: rgba(148, 108, 226, 0.32);
-  border-color: rgba(190, 164, 240, 0.42);
-}
-
-.glass-tile--violet:hover:not(:disabled) {
-  background: rgba(148, 108, 226, 0.44);
-}
-
-.glass-tile--magenta {
-  background: rgba(202, 88, 178, 0.3);
-  border-color: rgba(228, 150, 210, 0.42);
-}
-
-.glass-tile--magenta:hover:not(:disabled) {
-  background: rgba(202, 88, 178, 0.42);
-}
-
-.glass-tile--slate {
-  background: rgba(110, 126, 154, 0.32);
-  border-color: rgba(158, 172, 196, 0.42);
-}
-
-.glass-tile--slate:hover:not(:disabled) {
-  background: rgba(110, 126, 154, 0.44);
 }
 
 .glass-tile span {
@@ -164,124 +96,26 @@ a.glass-tile:visited {
   max-width: 100%;
 }
 
-/* Landing — neural aurora canvas */
-.glass-tile-panel--landing .glass-tile-bg {
-  background:
-    radial-gradient(circle at 22% 32%, rgba(64, 210, 222, 0.5), transparent 48%),
-    radial-gradient(circle at 76% 58%, rgba(148, 100, 232, 0.45), transparent 50%),
-    radial-gradient(circle at 48% 85%, rgba(212, 82, 168, 0.3), transparent 45%),
-    linear-gradient(135deg, #12143a 0%, #1b2a52 42%, #2a1b48 100%);
-}
-
-/* In-app — neutral warm (Apple Health–like) */
-.glass-tile-panel--app {
-  margin-bottom: 20px;
-  border-color: rgba(255, 255, 255, 0.18);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12);
-}
-
-.glass-tile-panel--app .glass-tile-bg {
-  background:
-    radial-gradient(circle at 12% 38%, rgba(64, 200, 222, 0.42), transparent 46%),
-    radial-gradient(circle at 78% 42%, rgba(120, 100, 225, 0.4), transparent 48%),
-    radial-gradient(circle at 52% 88%, rgba(200, 82, 172, 0.28), transparent 44%),
-    radial-gradient(circle at 90% 80%, rgba(60, 130, 180, 0.3), transparent 40%),
-    linear-gradient(155deg, #14163c 0%, #1c2850 42%, #171232 100%);
-}
-
-.glass-tile-panel--app .glass-tile-title {
-  font-family: var(--sans, system-ui, sans-serif);
-  font-size: clamp(0.9375rem, 2.5vw, 1.125rem);
-  font-weight: 600;
-  text-align: left;
-  text-shadow: none;
-}
-
-/* Compact — embedded in cards (upload shortcuts) */
-.glass-tile-panel--compact {
-  padding: 16px 14px 14px;
-  border-radius: var(--modern-radius-lg, 20px);
-  margin-bottom: 14px;
-}
-
-.glass-tile-panel--compact .glass-tile-title {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  text-align: left;
-  margin-bottom: 12px;
-  text-shadow: none;
-}
-
+/* Variant sizing */
 .glass-tile-panel--compact .glass-tile,
-.glass-tile-panel--compact button.glass-tile {
-  flex: 0 0 84px;
-  border-radius: 18px;
-  gap: 8px;
-  font-size: 11px;
-}
-
-.glass-tile-panel--compact .glass-tile-row {
-  gap: 10px;
-}
-
-/* Inline — gradient strip inside a card */
-.glass-tile-panel--inline {
-  padding: 14px 12px 12px;
-  border: none;
-  box-shadow: none;
-  border-radius: var(--modern-radius-lg, 20px);
-  margin-bottom: 12px;
-  overflow: hidden;
-}
-
-.glass-tile-panel--inline .glass-tile-bg {
-  border-radius: inherit;
-  background:
-    radial-gradient(circle at 12% 38%, rgba(64, 200, 222, 0.42), transparent 46%),
-    radial-gradient(circle at 78% 42%, rgba(120, 100, 225, 0.4), transparent 48%),
-    radial-gradient(circle at 52% 88%, rgba(200, 82, 172, 0.28), transparent 44%),
-    linear-gradient(155deg, #14163c 0%, #1c2850 42%, #171232 100%);
-}
-
-.app-modern--dark .glass-tile-panel--inline .glass-tile-bg {
-  background:
-    radial-gradient(circle at 10% 35%, rgba(58, 180, 205, 0.32), transparent 44%),
-    radial-gradient(circle at 85% 50%, rgba(120, 90, 210, 0.3), transparent 46%),
-    linear-gradient(160deg, #0b0c1e 0%, #131636 50%, #0a0a18 100%);
-}
-
+.glass-tile-panel--compact button.glass-tile,
 .glass-tile-panel--inline .glass-tile,
 .glass-tile-panel--inline button.glass-tile {
-  flex: 0 0 84px;
-  border-radius: 18px;
+  flex: 0 0 82px;
+  border-radius: 16px;
   gap: 8px;
   font-size: 11px;
 }
 
-.app-modern .upload-page .glass-tile-panel--inline {
-  margin-bottom: 14px;
+.glass-tile-panel--app {
+  margin-bottom: 16px;
 }
 
-.app-modern .upload-page .glass-tile-panel--inline .glass-tile-bg {
-  inset: 0;
+.glass-tile-panel--inline {
+  margin-bottom: 12px;
 }
 
-
-/* Dark mode — deeper canvas, same tile treatment */
-.app-modern--dark .glass-tile-panel--app {
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
-}
-
-.app-modern--dark .glass-tile-panel--app .glass-tile-bg {
-  background:
-    radial-gradient(circle at 10% 35%, rgba(58, 180, 205, 0.32), transparent 44%),
-    radial-gradient(circle at 85% 50%, rgba(120, 90, 210, 0.3), transparent 46%),
-    radial-gradient(circle at 50% 95%, rgba(190, 75, 160, 0.24), transparent 42%),
-    linear-gradient(160deg, #0b0c1e 0%, #131636 50%, #0a0a18 100%);
-}
-
-/* Persistent shortcut bar on every in-app screen — tiles float on the backdrop */
+/* Persistent shortcut bar on every in-app screen */
 .app-shell-tilebar {
   max-width: 1160px;
   margin: 0 auto 4px;
@@ -290,45 +124,11 @@ a.glass-tile:visited {
 
 .app-shell-tilebar .glass-tile-panel--app {
   margin-bottom: 12px;
-  padding: 4px 0 8px;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  border-radius: 0;
-  overflow: visible;
 }
 
-.app-shell-tilebar .glass-tile-panel--app .glass-tile-bg {
-  display: none;
-}
-
-/* Neutral frosted squircles — color comes from the blurred backdrop behind */
 .app-shell-tilebar .glass-tile,
 .app-shell-tilebar button.glass-tile {
-  flex: 0 0 96px;
-  border-radius: 26px;
-  background: rgba(255, 255, 255, 0.16);
-  border: 1px solid rgba(255, 255, 255, 0.32);
-  backdrop-filter: blur(28px) saturate(1.5);
-  -webkit-backdrop-filter: blur(28px) saturate(1.5);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.28);
-}
-
-.app-shell-tilebar .glass-tile:hover:not(:disabled),
-.app-shell-tilebar button.glass-tile:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.28);
-}
-
-.app-modern--dark .app-shell-tilebar .glass-tile,
-.app-modern--dark .app-shell-tilebar button.glass-tile {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-.app-modern--dark .app-shell-tilebar .glass-tile:hover:not(:disabled),
-.app-modern--dark .app-shell-tilebar button.glass-tile:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.18);
+  flex: 0 0 88px;
 }
 
 @media (prefers-reduced-motion: reduce) {

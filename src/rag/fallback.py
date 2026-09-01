@@ -78,6 +78,16 @@ async def vector_rag_query(
             tokens_used = int(
                 getattr(usage, "total_token_count", 0) or getattr(usage, "total_tokens", 0) or 0
             )
+        try:
+            from src.llm.versions import audit_llm_generation
+
+            audit_llm_generation(
+                prompt_template_name="docs_assistant",
+                output_text=answer_text,
+                extra={"source": "vector_rag_fallback"},
+            )
+        except Exception:
+            pass
     except Exception:
         answer_text = (
             "Retrieved evidence is listed in citations. Configure BEDROCK_MODEL_ID or "

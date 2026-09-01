@@ -4,7 +4,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { formatApiConnectionHint, generateReport, ReportResponse } from "../../api/client";
+import { formatApiConnectionHint, generateReport, explainScan, attestGeneratedContent, ReportResponse, ExplanationResponse } from "../../api/client";
 import {
   findingsDisagreeApi,
   reportDefer,
@@ -13,6 +13,9 @@ import {
 import type { Phase, ScanFindings, WMHResult, WMHSeverity } from "../../types/scan";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { IosButton } from "../ui/IosButton";
+import { AttestationGate } from "../ui/AttestationGate";
+import { ProviderBadge } from "../ui/ProviderBadge";
+import { useFeatures } from "../../hooks/useFeatures";
 
 type FindingsCardProps = {
   findings: ScanFindings | null;
@@ -326,6 +329,13 @@ export default function FindingsCard({
   const [overrideText, setOverrideText] = useState("");
   const [deferReason, setDeferReason] = useState("");
   const [disagreeNotes, setDisagreeNotes] = useState("");
+  const [explanation, setExplanation] = useState<ExplanationResponse | null>(null);
+  const [explainLoading, setExplainLoading] = useState(false);
+  const [explainError, setExplainError] = useState("");
+  const [explainAttested, setExplainAttested] = useState(false);
+  const [explainAttestBusy, setExplainAttestBusy] = useState(false);
+  const [explainAttestErr, setExplainAttestErr] = useState<string | null>(null);
+  const { llmProvider } = useFeatures();
 
   const reportModel = findings?.modelName?.trim() || model;
 
@@ -382,6 +392,7 @@ export default function FindingsCard({
           study_instance_uid: studyUid || r.study_instance_uid,
           report_text: r.report_text,
           timestamp: ts,
+          provenance: r.provenance ?? null,
         }),
       );
       navigate("/report");
@@ -390,6 +401,28 @@ export default function FindingsCard({
       setReportError(formatApiConnectionHint(raw));
     } finally {
       setReportLoading(false);
+    }
+  }
+
+  async function handleExplain() {
+    if (!file || !findings) return;
+    setExplainError("");
+    setExplainLoading(true);
+    setExplainAttested(false);
+    try {
+      const r = await explainScan({
+        file,
+        model: reportModel,
+        study_instance_uid: studyUid || undefined,
+        site_id: siteId || undefined,
+        shadow_mode: shadowMode,
+      });
+      setExplanation(r);
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : String(e);
+      setExplainError(formatApiConnectionHint(raw));
+    } finally {
+      setExplainLoading(false);
     }
   }
 
@@ -659,6 +692,75 @@ export default function FindingsCard({
         >
           {impression}
         </div>
+        <div style={{ marginTop: 10 }}>
+          <IosButton
+            variant="secondary"
+            size="sm"
+            loading={explainLoading}
+            disabled={!file || explainLoading}
+            onClick={() => void handleExplain()}
+          >
+            {explainLoading ? "Generating…" : explanation ? "Regenerate AI explanation" : "Generate AI explanation"}
+          </IosButton>
+        </div>
+        {explainError ? (
+          <div className="app-text-error" style={{ marginTop: 8, fontSize: 12, whiteSpace: "pre-wrap" }}>
+            {explainError}
+          </div>
+        ) : null}
+        {explanation ? (
+          <div style={{ marginTop: 10 }}>
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: "0.5px",
+                textTransform: "uppercase",
+                color: "var(--ink-mute)",
+                marginBottom: 6,
+              }}
+            >
+              AI explanation
+            </div>
+            <div
+              style={{
+                fontFamily: 'Georgia, "Times New Roman", serif',
+                fontSize: 12.5,
+                lineHeight: 1.6,
+                color: "var(--ink-mid)",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {explanation.explanation}
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <ProviderBadge provider={llmProvider} provenance={explanation.provenance} />
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <AttestationGate
+                attested={explainAttested}
+                busy={explainAttestBusy}
+                error={explainAttestErr}
+                onSubmit={async (name, text) => {
+                  setExplainAttestBusy(true);
+                  setExplainAttestErr(null);
+                  try {
+                    await attestGeneratedContent({
+                      attested_by: name,
+                      attestation_text: text,
+                      content_kind: "explanation",
+                    });
+                    setExplainAttested(true);
+                  } catch (err) {
+                    setExplainAttestErr(err instanceof Error ? err.message : "Attestation failed");
+                  } finally {
+                    setExplainAttestBusy(false);
+                  }
+                }}
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div style={{ padding: "12px 14px 8px 14px" }}>

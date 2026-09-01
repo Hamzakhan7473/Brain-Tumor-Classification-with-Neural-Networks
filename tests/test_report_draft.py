@@ -83,6 +83,18 @@ def signed_draft_id(client, wmh_model_run):
         headers=HEADERS,
     )
     rid = r.json()["report_id"]
+    at = client.post(
+        f"/report/{rid}/attest",
+        json={
+            "attested_by": "Dr. Test",
+            "attestation_text": (
+                "I have reviewed the AI-generated content against the source measurements "
+                "and confirm its accuracy"
+            ),
+        },
+        headers=HEADERS,
+    )
+    assert at.status_code == 200, at.text
     rs = client.post(
         f"/report/{rid}/sign",
         json={
@@ -149,6 +161,18 @@ def test_signed_report_is_immutable(client, signed_draft_id):
 
 
 def test_sign_off_creates_audit_with_hash(client, fresh_draft_id):
+    at = client.post(
+        f"/report/{fresh_draft_id}/attest",
+        json={
+            "attested_by": "Dr. Test",
+            "attestation_text": (
+                "I have reviewed the AI-generated content against the source measurements "
+                "and confirm its accuracy"
+            ),
+        },
+        headers=HEADERS,
+    )
+    assert at.status_code == 200, at.text
     r = client.post(
         f"/report/{fresh_draft_id}/sign",
         json={
@@ -187,3 +211,97 @@ def test_pdf_export(client, signed_draft_id):
     assert r.status_code in (200, 503)
     if r.status_code == 200:
         assert r.content[:4] == b"%PDF"
+
+
+_ATTEST_TEXT = (
+    "I have reviewed the AI-generated content against the source measurements "
+    "and confirm its accuracy"
+)
+
+
+def test_draft_includes_content_provenance(client, wmh_model_run):
+    r = client.post(
+        "/report/draft",
+        json={"case_id": "1.2.3.4.prov", "template_id": "brain_mri_wmh_svd", "model_run": wmh_model_run},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200, r.text
+    prov = r.json()["provenance"]
+    assert prov["generated_by"]
+    assert prov["prompt_template_version"]
+    assert prov["validator_status"] in ("passed", "warnings", "failed")
+    assert isinstance(prov.get("validator_warnings"), list)
+
+
+def test_attest_rejects_incomplete_body(client, fresh_draft_id):
+    empty = client.post(f"/report/{fresh_draft_id}/attest", json={}, headers=HEADERS)
+    assert empty.status_code == 422
+    missing_text = client.post(
+        f"/report/{fresh_draft_id}/attest",
+        json={"attested_by": "Dr. Test"},
+        headers=HEADERS,
+    )
+    assert missing_text.status_code == 422
+    missing_name = client.post(
+        f"/report/{fresh_draft_id}/attest",
+        json={"attestation_text": _ATTEST_TEXT},
+        headers=HEADERS,
+    )
+    assert missing_name.status_code == 422
+
+
+def test_attest_rejects_wrong_statement(client, fresh_draft_id):
+    r = client.post(
+        f"/report/{fresh_draft_id}/attest",
+        json={"attested_by": "Dr. Test", "attestation_text": "looks fine"},
+        headers=HEADERS,
+    )
+    assert r.status_code == 400
+    assert "attestation_text" in str(r.json().get("detail", "")).lower()
+
+
+def test_sign_pdf_fhir_reject_unattested(client, fresh_draft_id):
+    sign = client.post(
+        f"/report/{fresh_draft_id}/sign",
+        json={
+            "signer_name": "Dr. Test",
+            "signer_role": "neuroradiologist",
+            "acknowledged_disclaimer": True,
+        },
+        headers=HEADERS,
+    )
+    assert sign.status_code == 400
+    assert "attest" in str(sign.json().get("detail", "")).lower()
+
+    pdf = client.get(f"/report/{fresh_draft_id}/pdf", headers=HEADERS)
+    assert pdf.status_code == 400
+    assert "attest" in str(pdf.json().get("detail", "")).lower()
+
+    fhir = client.get(f"/report/{fresh_draft_id}/fhir", headers=HEADERS)
+    assert fhir.status_code == 400
+    assert "attest" in str(fhir.json().get("detail", "")).lower()
+
+
+def test_attest_is_logged_to_audit_trail(client, fresh_draft_id):
+    import json
+    from pathlib import Path
+
+    r = client.post(
+        f"/report/{fresh_draft_id}/attest",
+        json={"attested_by": "Dr. Test", "attestation_text": _ATTEST_TEXT},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["ok"] is True
+    assert data["attested_by"] == "Dr. Test"
+    assert data["attested_at"]
+    audit_id = data["audit_id"]
+    log_path = Path(__file__).resolve().parents[1] / "logs" / "audit" / "report_draft.jsonl"
+    assert log_path.exists()
+    recs = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    match = next(x for x in reversed(recs) if x.get("audit_id") == audit_id)
+    assert match["event_type"] == "report_attested"
+    assert match["payload"]["attested_by"] == "Dr. Test"
+    assert match["payload"]["report_id"] == fresh_draft_id
+    assert match.get("timestamp_utc") or match["payload"].get("timestamp_utc")

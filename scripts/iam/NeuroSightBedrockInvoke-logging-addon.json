@@ -1,0 +1,43 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BedrockInvocationLoggingCloudWatch",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams"
+      ],
+      "Resource": [
+        "arn:aws:logs:*:*:log-group:/neurosight/bedrock-invocations",
+        "arn:aws:logs:*:*:log-group:/neurosight/bedrock-invocations:log-stream:*"
+      ]
+    },
+    {
+      "Sid": "BedrockInvocationLoggingS3",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:PutObjectAcl",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": [
+        "arn:aws:s3:::neurosight-bedrock-audit-logs",
+        "arn:aws:s3:::neurosight-bedrock-audit-logs/*"
+      ]
+    },
+    {
+      "Sid": "ConfigureBedrockInvocationLogging",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:PutModelInvocationLoggingConfiguration",
+        "bedrock:GetModelInvocationLoggingConfiguration",
+        "bedrock:DeleteModelInvocationLoggingConfiguration"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

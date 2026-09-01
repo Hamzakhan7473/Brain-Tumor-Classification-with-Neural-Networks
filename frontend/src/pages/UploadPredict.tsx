@@ -4,7 +4,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { formatApiConnectionHint, predictScan, PredictResponse } from "../api/client";
+import { PredictResponse } from "../api/client";
 import ClinicalContextForm, {
   clinicalContextToApiJson,
   emptyClinicalContext,
@@ -21,15 +21,6 @@ import { useScanSimulation, type ScanStartOptions } from "../hooks/useScanSimula
 import type { ClinicalContextPayload } from "../types/scan";
 import { predictApiDisplayBase } from "../lib/api";
 import "./UploadPredict.css";
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.readAsDataURL(file);
-  });
-}
 
 type ConfidenceBarsProps = {
   result: PredictResponse;
@@ -91,11 +82,6 @@ export default function UploadPredict() {
   const [clinical, setClinical] = useState<ClinicalContextPayload>(() => emptyClinicalContext());
   const [uploadGateHint, setUploadGateHint] = useState<string>("");
 
-  const [loading, setLoading] = useState(false);
-  const [runError, setRunError] = useState<string>("");
-  const [result, setResult] = useState<PredictResponse | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string>("");
-
   const classes = useMemo(() => ["glioma", "meningioma", "pituitary", "notumor"], []);
 
   const is3dPipeline = model === "unet_3d_wmh";
@@ -125,7 +111,40 @@ export default function UploadPredict() {
     scanState.findings !== null &&
     scanState.error === null;
 
-  const displayPreview = previewUrl || "";
+  const pipelineBusy =
+    scanState.phase !== "idle" &&
+    scanState.phase !== "complete" &&
+    scanState.phase !== "error";
+
+  const subjectLabel = useMemo(() => {
+    if (!clinicalComplete) return undefined;
+    const sex = clinical.sex.trim().toUpperCase();
+    const age = clinical.age.trim();
+    if (!sex && !age) return undefined;
+    return [sex, age ? `${age}y` : null].filter(Boolean).join(" · ");
+  }, [clinicalComplete, clinical.sex, clinical.age]);
+
+  const resultFromScan = useMemo((): PredictResponse | null => {
+    const f = scanState.findings;
+    if (!f || f.isSegmentation || scanState.phase !== "complete") return null;
+    const probs = Object.fromEntries(f.classProbs.map((c) => [c.label, c.probability]));
+    return {
+      label: f.prediction,
+      prediction: f.prediction,
+      confidence: f.confidence,
+      probabilities: probs,
+      class_probabilities: probs,
+      model: f.modelName,
+      shadow_mode: shadowMode,
+      study_instance_uid: studyUid,
+      site_id: siteId || undefined,
+      inference_time_s: f.inferenceMs > 0 ? f.inferenceMs / 1000 : null,
+      saliency_map_b64: f.salMapB64,
+      input_shape: f.inputShape,
+    };
+  }, [scanState.findings, scanState.phase, shadowMode, studyUid, siteId]);
+
+  const shownResult = resultFromScan;
 
   useEffect(() => {
     document.body.style.overscrollBehavior = "none";
@@ -134,70 +153,20 @@ export default function UploadPredict() {
     };
   }, []);
 
-  async function onRun() {
+  function onRun() {
     if (!file) return;
-    setLoading(true);
-    setRunError("");
-    setResult(null);
-
-    try {
-      const raw = sessionStorage.getItem("lastPrediction");
-      if (raw && scanState.phase === "complete" && scanState.findings && !scanState.findings.isSimulated) {
-        try {
-          type Stored = {
-            scanBase64?: string;
-            filename?: string;
-            prediction?: PredictResponse;
-          };
-          const stored = JSON.parse(raw) as Stored;
-          if (stored.filename === filename && stored.prediction && stored.scanBase64) {
-            setResult(stored.prediction);
-            setPreviewUrl(stored.scanBase64);
-            navigate("/report");
-            return;
-          }
-        } catch {
-          /* predict fresh */
-        }
-      }
-
-      const r = await predictScan({
-        file,
-        model,
-        site_id: siteId || undefined,
-        study_instance_uid: studyUid || undefined,
-        shadow_mode: shadowMode,
-        context: clinicalComplete ? clinicalContextToApiJson(clinical) : undefined,
-      });
-      setResult(r);
-
-      const b64 = await fileToBase64(file);
-      const stored = {
-        scanBase64: b64,
-        filename,
-        model,
-        study_instance_uid: studyUid,
-        site_id: siteId || undefined,
-        shadow_mode: shadowMode,
-        prediction: r,
-      };
-      sessionStorage.setItem("lastPrediction", JSON.stringify(stored));
-      setPreviewUrl(b64);
-      navigate("/report");
-    } catch (e) {
-      setRunError(formatApiConnectionHint(e instanceof Error ? e.message : String(e)));
-    } finally {
-      setLoading(false);
+    if (!clinicalComplete) {
+      setUploadGateHint("Complete clinical context before attaching imaging.");
+      return;
     }
+    setUploadGateHint("");
+    void startScan(file, model, scanOpts);
   }
 
   function handleTryAgain() {
     reset();
     setFile(null);
     setFilename("");
-    setRunError("");
-    setResult(null);
-    setPreviewUrl("");
     setUploadGateHint("");
     if (inputRef.current) inputRef.current.value = "";
   }
@@ -214,19 +183,12 @@ export default function UploadPredict() {
     reset();
     setFile(f);
     setFilename(f.name || "");
-    setPreviewUrl("");
-    setResult(null);
-    setRunError("");
-    void startScan(f, model, scanOpts);
   }
 
   function handleScanAnother() {
     reset();
     setFile(null);
     setFilename("");
-    setRunError("");
-    setResult(null);
-    setPreviewUrl("");
     setUploadGateHint("");
     if (inputRef.current) inputRef.current.value = "";
   }
@@ -234,10 +196,7 @@ export default function UploadPredict() {
   function handleSelectModel(next: string) {
     if (next === model) return;
     setModel(next);
-    if (!file) return;
-    if (!clinicalComplete) return;
     reset();
-    void startScan(file, next, scanOpts);
   }
 
   function focusFileInput() {
@@ -425,11 +384,11 @@ export default function UploadPredict() {
                   size="lg"
                   variant="primary"
                   fullWidth
-                  loading={loading}
-                  disabled={!file}
-                  onClick={() => void onRun()}
+                  loading={pipelineBusy}
+                  disabled={!file || pipelineBusy || !clinicalComplete}
+                  onClick={() => onRun()}
                 >
-                  {loading ? "Running…" : "Run inference"}
+                  {pipelineBusy ? "Running…" : "Run inference"}
                 </IosButton>
 
                 {showAuxReset ? (
@@ -439,8 +398,6 @@ export default function UploadPredict() {
                     </IosButton>
                   </div>
                 ) : null}
-
-                {runError ? <div className="upload-run-error">{runError}</div> : null}
               </div>
             </div>
 
@@ -452,6 +409,9 @@ export default function UploadPredict() {
               progressPct={scanState.progressPct}
               findings={scanState.findings}
               isSegmentationModel={model === "unet_3d_wmh"}
+              studyLabel={file ? `Study ${studyUid.slice(0, 8)}` : undefined}
+              fileLabel={file ? filename : undefined}
+              subjectLabel={subjectLabel}
             />
           </div>
 
@@ -476,29 +436,31 @@ export default function UploadPredict() {
 
         <div className="upload-card upload-result ios-pad-card">
           <div className="upload-result__title">Result view</div>
-          {!result ? (
+          {pipelineBusy ? (
+            <div className="upload-result__empty">Running inference — class scores appear here when the pipeline finishes.</div>
+          ) : scanState.findings?.isSegmentation && findingsVisible ? (
             <div className="upload-result__empty">
-              Upload a file to run inference, or finish a scan above to hydrate this panel after “Run inference”.
+              WMH segmentation finished. Regional volumes and grading are in <strong>Analysis findings</strong> on the right.
+            </div>
+          ) : !shownResult ? (
+            <div className="upload-result__empty">
+              {scanState.phase === "idle" && file
+                ? "File attached. Click Run inference to classify it."
+                : "Attach a scan, then click Run inference. Results stay on this page — you will not be sent away."}
             </div>
           ) : (
             <>
               <div className="upload-result__label">
-                {result.label}{" "}
-                <span className="upload-result__confidence">({(result.confidence * 100).toFixed(1)}%)</span>
+                {shownResult.label}{" "}
+                <span className="upload-result__confidence">({(shownResult.confidence * 100).toFixed(1)}%)</span>
               </div>
 
-              <ConfidenceBars result={result} classes={classes} />
-
-              {displayPreview ? (
-                <div className="upload-preview">
-                  <div className="upload-preview__heading">Uploaded preview</div>
-                  <div className="upload-preview__frame">
-                    <img src={displayPreview} alt="Uploaded scan" />
-                  </div>
-                </div>
-              ) : null}
+              <ConfidenceBars result={shownResult} classes={classes} />
 
               <div className="upload-result__actions">
+                <IosButton variant="primary" size="md" onClick={() => navigate("/report")}>
+                  Open report draft
+                </IosButton>
                 <IosButton
                   variant="ghost"
                   size="md"

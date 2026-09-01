@@ -30,6 +30,7 @@ class Capabilities(BaseModel):
     llm_configured: bool = False
     llm_provider: str = ""
     bedrock_configured: bool = False
+    chain_of_verification: bool = False
     auth_required_globally: bool = False
 
 
@@ -107,6 +108,12 @@ def _capabilities() -> Capabilities:
             llm_provider = "bedrock" if bedrock_configured else "gemini"
     raw_keys = os.environ.get("API_KEYS") or os.environ.get("API_KEY") or ""
     auth_required = bool(raw_keys.strip())
+    cov = (os.environ.get("ENABLE_CHAIN_OF_VERIFICATION") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
     return Capabilities(
         models_2d=models_2d,
@@ -115,6 +122,7 @@ def _capabilities() -> Capabilities:
         llm_configured=llm_configured,
         llm_provider=llm_provider,
         bedrock_configured=bedrock_configured,
+        chain_of_verification=cov,
         auth_required_globally=auth_required,
     )
 

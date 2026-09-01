@@ -10,7 +10,29 @@ from typing import Any
 import yaml
 
 from src.inference.audit_log import log_report_draft_event
-from src.llm.client import get_llm_client
+from src.llm.client import generate_clinical_prose, get_llm_client
+from src.llm.narrative_schema import (
+    RegionNarrative,
+    StructuredNarrativeError,
+    interpolate_narrative,
+    leaked_numeric_literals,
+    log_structured_number_leak,
+)
+from src.llm.validation import (
+    ValidationResult,
+    enforce_clinical_gate,
+    grounding_from_measurements,
+    log_grounding_assessment,
+    validate_no_invented_numbers,
+)
+from src.llm.versions import audit_llm_generation
+
+
+def _draft_provenance(finding_gates: list[ValidationResult]) -> dict[str, Any]:
+    from src.llm.content_provenance import build_content_provenance
+
+    combined = ValidationResult.combine(*finding_gates) if finding_gates else ValidationResult(passed=True)
+    return build_content_provenance(prompt_template_name="report_draft", gate=combined)
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _TPL_DIR = _PROJECT_ROOT / "configs" / "report_templates"
@@ -86,15 +108,31 @@ def _measures_dict(measurements: list[dict]) -> dict[str, float]:
     return d
 
 
-def _llm_text(prompt: str, max_tokens: int = 200) -> str:
-    """Text-only generation via the resolved provider (Bedrock or Gemini)."""
+def _llm_text(
+    prompt: str,
+    max_tokens: int = 200,
+    *,
+    grounding_payload: dict | None = None,
+    query: str | None = None,
+) -> tuple[str, dict]:
+    """Text-only generation. Never attach scan pixels (FDA Non-Device CDS Criterion 1)."""
+    if grounding_payload is not None:
+        try:
+            return generate_clinical_prose(
+                prompt,
+                query=query or "Draft the clinical findings section.",
+                grounding_payload=grounding_payload,
+                max_tokens=max_tokens,
+            )
+        except Exception:
+            return "", {}
     try:
         client = get_llm_client()
         gen_cfg = {"max_output_tokens": max_tokens}
         resp = client.generate_content(prompt, generation_config=gen_cfg)
-        return (getattr(resp, "text", None) or "").strip()
+        return (getattr(resp, "text", None) or "").strip(), {}
     except Exception:
-        return ""
+        return "", {}
 
 
 # Backwards-compatible alias (older call sites / tests)
@@ -295,51 +333,75 @@ class ReportBuilder:
             return "moderate"
         return "severe"
 
-    def _format_measurements(self, measures: list[dict]) -> str:
+    def _format_measurement_slots(self, measures: list[dict]) -> str:
         lines = []
         for x in measures:
-            lines.append(f"- {x['id']}: {x['value']} {x.get('unit') or ''}".strip())
+            unit = x.get("unit") or ""
+            lines.append(f"- {{{x['id']}}}  ({x.get('label') or x['id']}{(' ' + unit) if unit else ''})")
         return "\n".join(lines) if lines else "(none)"
+
+    def _llm_region_narrative(
+        self,
+        prompt: str,
+        payload: dict,
+        region: dict[str, Any],
+        relevant: list[dict],
+    ) -> tuple[str, dict]:
+        """Prefer Bedrock structured (text-only) output; fall back to free-text generation."""
+        query = f"Draft the {region.get('label') or 'findings'} section using measurement slots only."
+        try:
+            from src.llm.bedrock import BedrockClient
+
+            client = get_llm_client()
+            if isinstance(client, BedrockClient):
+                try:
+                    nar = client.generate_structured_narrative(
+                        payload,
+                        RegionNarrative,
+                        prompt=prompt,
+                        query=query,
+                        generation_config={"max_output_tokens": 160},
+                        tool_name="region_narrative",
+                    )
+                    meta = getattr(client, "last_grounding_meta", {}) or {}
+                    return (getattr(nar, "text", None) or "").strip(), meta
+                except StructuredNarrativeError:
+                    # Schema-layer failure: do not retry as free text (that would
+                    # re-enable number invention). Caller uses the template fallback.
+                    return "", {}
+        except Exception:
+            pass
+        try:
+            return _llm_text(
+                prompt,
+                max_tokens=160,
+                grounding_payload=payload,
+                query=query,
+            )
+        except Exception:
+            return "", {}
 
     def _validate_no_invented_numbers(
         self,
         text: str,
         allowed_measurements: list[dict],
     ) -> str | None:
+        """Backward-compatible wrapper around the shared number gate."""
         if not text:
             return text
-        nums_in_text = re.findall(r"\b\d+\.?\d*\b", text)
-        allowed = _numeric_tokens(allowed_measurements)
-        for n in nums_in_text:
-            if n in allowed:
-                continue
-            try:
-                fn = float(n)
-            except ValueError:
-                continue
-            ok = False
-            for a in allowed:
-                try:
-                    if abs(float(a) - fn) < 1e-6:
-                        ok = True
-                        break
-                except ValueError:
-                    continue
-            if not ok:
-                log_report_draft_event(
-                    event_type="llm_hallucination_blocked",
-                    user_id="system",
-                    payload={"invented_number": n, "text": text[:500]},
-                )
-                return None
-        return text
+        result = validate_no_invented_numbers(text, {"measurements": allowed_measurements})
+        if result.passed:
+            return text
+        for n in result.invented_numbers:
+            log_report_draft_event(
+                event_type="llm_hallucination_blocked",
+                user_id="system",
+                payload={"invented_number": n, "text": text[:500]},
+            )
+        return None
 
     def _render_template_string(self, template: str, measurements: list[dict]) -> str:
-        md = {m["id"]: m["value"] for m in measurements}
-        out = template
-        for k, v in md.items():
-            out = out.replace(f"{{{{{k}}}}}", str(v))
-        return out
+        return interpolate_narrative(template, measurements)
 
     def _build_template_section(
         self,
@@ -404,20 +466,79 @@ class ReportBuilder:
 
         prompt = f"""You are drafting one section of a radiology report.
 Region: {region['label']}
-Available measurements (USE THESE EXACT VALUES, do not invent others):
-{self._format_measurements(relevant)}
+Available measurement SLOTS (insert these placeholders — never write the numbers yourself):
+{self._format_measurement_slots(relevant)}
 
 Model findings for this region:
 {region_hint}
 
-Write 1-2 sentences. Reference measurements using {{{{measure:ID}}}} placeholders only (e.g. {{{{measure:wmh_volume_cc}}}}).
-Do not write numeric literals except inside those placeholders."""
+Write 1-2 sentences of prose. Quantities MUST appear only as {{slot_id}} placeholders
+(e.g. {{wmh_volume_cc}} or {{{{measure:wmh_volume_cc}}}}). Do not write numeric literals.
+Do not name anatomical regions, findings, or severity grades that are not in the measurements above."""
 
-        raw = _llm_text(prompt, max_tokens=160)
-        validated = self._validate_no_invented_numbers(raw, relevant) if raw else None
-        text = validated if validated else region.get("fallback", f"{region['label']}: see findings.")
-        mids = [m["id"] for m in relevant]
-        return {"region": region["label"], "text": text, "measurements": mids, "citations": []}
+        fallback = region.get("fallback", f"{region['label']}: see findings.")
+        payload = grounding_from_measurements(
+            relevant,
+            model_run=None,
+            regions=[region.get("label"), region.get("id")],
+        )
+        mids = set(region.get("measurement_ids") or [])
+        if mids & {"predicted_label", "dominant_class_probability", "model_confidence", "model_confidence_raw"}:
+            payload["label"] = model_run.get("label") or model_run.get("prediction")
+            payload["confidence"] = model_run.get("confidence")
+            payload["probabilities"] = model_run.get("probabilities") or model_run.get("class_probabilities")
+        if any(str(mid).startswith("wmh") or str(mid) in {"lesion_voxels", "age_percentile"} for mid in mids):
+            if isinstance(model_run.get("wmh"), dict):
+                payload["wmh"] = model_run["wmh"]
+
+        raw, gmeta = self._llm_region_narrative(prompt, payload, region, relevant)
+        if not (raw or "").strip():
+            text, gate = fallback, ValidationResult(passed=True, used_fallback=True)
+        else:
+            leaked = leaked_numeric_literals(raw)
+            if leaked:
+                log_structured_number_leak({"region": leaked}, raw)
+                text, gate = fallback, ValidationResult(passed=True, used_fallback=True)
+            else:
+                interpolated = interpolate_narrative(raw, relevant)
+
+                def _retry(corrective: str) -> str:
+                    retry_text, _retry_meta = self._llm_region_narrative(
+                        prompt + "\n\n" + corrective,
+                        payload,
+                        region,
+                        relevant,
+                    )
+                    if _retry_meta:
+                        gmeta.update(_retry_meta)
+                    if leaked_numeric_literals(retry_text):
+                        log_structured_number_leak({"region_retry": leaked_numeric_literals(retry_text)}, retry_text)
+                        return ""
+                    return interpolate_narrative(retry_text, relevant)
+
+                text, gate = enforce_clinical_gate(
+                    interpolated,
+                    payload,
+                    fallback_text=fallback,
+                    retry_fn=_retry,
+                )
+        if gmeta:
+            gate.contextual_grounding = gmeta
+            log_grounding_assessment(gmeta, gate)
+        audit_llm_generation(
+            prompt_template_name="report_draft",
+            output_text=text,
+            grounding_payload=payload,
+            gate=gate,
+        )
+        mids_out = [m["id"] for m in relevant]
+        return {
+            "region": region["label"],
+            "text": text,
+            "measurements": mids_out,
+            "citations": [],
+            "validation": gate.to_dict(),
+        }
 
     def _build_impressions(
         self,
@@ -526,6 +647,8 @@ Do not write numeric literals except inside those placeholders."""
                 "citations": [],
             }
         )
+        for im in impressions:
+            im["text"] = interpolate_narrative(im.get("text") or "", meas_ext)
         return impressions
 
     def _build_recommendations(self, severity: str, rules: list[dict[str, Any]]) -> list[str]:
@@ -592,8 +715,27 @@ Do not write numeric literals except inside those placeholders."""
         )
 
         findings = []
+        finding_gates: list[ValidationResult] = []
         for region in self.template.get("finding_regions") or []:
-            findings.append(self._build_finding_row(region, measurements, model_run, severity_bucket))
+            row = self._build_finding_row(region, measurements, model_run, severity_bucket)
+            findings.append(row)
+            v = row.get("validation")
+            if isinstance(v, dict):
+                finding_gates.append(
+                    ValidationResult(
+                        passed=bool(v.get("passed")),
+                        invented_numbers=list(v.get("invented_numbers") or []),
+                        invented_entities=list(v.get("invented_entities") or []),
+                        omitted_findings=list(v.get("omitted_findings") or []),
+                        contradicted_claims=list(v.get("contradicted_claims") or []),
+                        unaddressed_claims=list(v.get("unaddressed_claims") or []),
+                        used_fallback=bool(v.get("used_fallback")),
+                        regenerated=bool(v.get("regenerated")),
+                        chain_of_verification=v.get("chain_of_verification")
+                        if isinstance(v.get("chain_of_verification"), dict)
+                        else None,
+                    )
+                )
 
         findings_section = {
             "name": "findings",
@@ -611,11 +753,7 @@ Do not write numeric literals except inside those placeholders."""
         citations, cite_map = self._extract_citations()
         impressions = self._build_impressions(severity_bucket, measurements, model_run, cite_map, case=case)
         for im in impressions:
-            txt = im["text"]
-            for mid in im.get("measurements") or []:
-                mv = next((m["value"] for m in measurements if m["id"] == mid), "")
-                txt = txt.replace(f"{{{{measure:{mid}}}}}", str(mv))
-            im["text"] = txt
+            im["text"] = interpolate_narrative(im.get("text") or "", measurements)
 
         impression_section = {
             "name": "impression",
@@ -689,6 +827,16 @@ Do not write numeric literals except inside those placeholders."""
             "signed_text_hash": None,
             "signature_audit_id": None,
             "disclaimer": DEFAULT_DISCLAIMER,
+            "provenance": _draft_provenance(finding_gates),
+            "attested_by": None,
+            "attested_at": None,
+            "attestation_text": None,
+            "attestation_audit_id": None,
+            "validation": (
+                ValidationResult.combine(*finding_gates).to_dict()
+                if finding_gates
+                else ValidationResult(passed=True).to_dict()
+            ),
             "case_snapshot": {
                 "clinical_context": case.get("clinical_context"),
                 "prior_studies": case.get("prior_studies"),
@@ -734,11 +882,7 @@ Do not write numeric literals except inside those placeholders."""
             _, key_map = self._extract_citations()
             impressions = self._build_impressions(severity_bucket, measurements, model_run, key_map)
             for im in impressions:
-                txt = im["text"]
-                for mid in im.get("measurements") or []:
-                    mv = next((m["value"] for m in measurements if m["id"] == mid), "")
-                    txt = txt.replace(f"{{{{measure:{mid}}}}}", str(mv))
-                im["text"] = txt
+                im["text"] = interpolate_narrative(im.get("text") or "", measurements)
             return {
                 "name": "impression",
                 "source": "ai",

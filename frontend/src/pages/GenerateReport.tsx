@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { formatApiConnectionHint, generateReport, ReportResponse } from "../api/client";
+import { formatApiConnectionHint, generateReport, attestGeneratedContent, ReportResponse } from "../api/client";
 import EvidenceDrawer, { EvidenceCitation } from "../components/EvidenceDrawer";
 import { AppPage } from "../components/layout/AppPage";
+import { AttestationGate } from "../components/ui/AttestationGate";
 import { IosButton, IosLinkButton } from "../components/ui/IosButton";
+import { ProviderBadge } from "../components/ui/ProviderBadge";
+import { useFeatures } from "../hooks/useFeatures";
 
 type StoredPrediction = {
   scanBase64: string;
@@ -41,6 +44,10 @@ export default function GenerateReport() {
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [savedTimestamp, setSavedTimestamp] = useState<string>("");
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
+  const [attested, setAttested] = useState(false);
+  const [attestBusy, setAttestBusy] = useState(false);
+  const [attestErr, setAttestErr] = useState<string | null>(null);
+  const { llmProvider } = useFeatures();
 
   useEffect(() => {
     const raw = sessionStorage.getItem("lastPrediction");
@@ -68,10 +75,16 @@ export default function GenerateReport() {
         shadow_mode: stored.shadow_mode,
       });
       setReport(r);
+      setAttested(false);
       const ts = new Date().toISOString();
       sessionStorage.setItem(
         "lastReport",
-        JSON.stringify({ study_instance_uid: stored.study_instance_uid, report_text: r.report_text, timestamp: ts }),
+        JSON.stringify({
+          study_instance_uid: stored.study_instance_uid,
+          report_text: r.report_text,
+          timestamp: ts,
+          provenance: r.provenance ?? null,
+        }),
       );
       setSavedTimestamp(ts);
     } catch (e) {
@@ -150,7 +163,35 @@ export default function GenerateReport() {
               </IosLinkButton>
             </div>
             {report ? (
-              <pre className="app-report-pre">{report.report_text}</pre>
+              <>
+                <pre className="app-report-pre">{report.report_text}</pre>
+                <div style={{ marginTop: 8 }}>
+                  <ProviderBadge provider={llmProvider} provenance={report.provenance} />
+                </div>
+                <div style={{ marginTop: 14 }}>
+                  <AttestationGate
+                    attested={attested}
+                    busy={attestBusy}
+                    error={attestErr}
+                    onSubmit={async (name, text) => {
+                      setAttestBusy(true);
+                      setAttestErr(null);
+                      try {
+                        await attestGeneratedContent({
+                          attested_by: name,
+                          attestation_text: text,
+                          content_kind: "report",
+                        });
+                        setAttested(true);
+                      } catch (e) {
+                        setAttestErr(e instanceof Error ? e.message : "Attestation failed");
+                      } finally {
+                        setAttestBusy(false);
+                      }
+                    }}
+                  />
+                </div>
+              </>
             ) : null}
           </div>
         </div>

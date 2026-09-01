@@ -57,6 +57,12 @@ async def lifespan(app: FastAPI):
         ish = cfg.get("input_shape")
         task = cfg.get("task", "classification")
         print(f"  - {name}: input {ish}, task {task}")
+    try:
+        from src.llm.versions import log_startup_versions
+
+        log_startup_versions()
+    except Exception as exc:
+        print(f"LLM version pin: (unavailable: {exc})")
     print("API ready at http://127.0.0.1:8000")
     print("=" * 60)
     yield
@@ -157,6 +163,29 @@ class PredictResponse(BaseModel):
     audit_timestamp: Optional[str] = None
 
 
+class ClinicalValidation(BaseModel):
+    passed: bool = True
+    invented_numbers: list[str] = Field(default_factory=list)
+    invented_entities: list[str] = Field(default_factory=list)
+    omitted_findings: list[str] = Field(default_factory=list)
+    contradicted_claims: list[str] = Field(default_factory=list)
+    unaddressed_claims: list[str] = Field(default_factory=list)
+    independent_visual_claims: list[str] = Field(default_factory=list)
+    used_fallback: bool = False
+    regenerated: bool = False
+    violations: list[dict] = Field(default_factory=list)
+    contextual_grounding: Optional[dict] = None
+    chain_of_verification: Optional[dict] = None
+
+
+class ContentProvenance(BaseModel):
+    generated_by: str
+    prompt_template_version: str
+    grounding_score: Optional[float] = None
+    validator_status: str = "passed"
+    validator_warnings: list[str] = Field(default_factory=list)
+
+
 class ReportResponse(BaseModel):
     prediction: str
     confidence: float
@@ -164,6 +193,19 @@ class ReportResponse(BaseModel):
     study_instance_uid: Optional[str] = None
     site_id: Optional[str] = None
     shadow_mode: bool = False
+    validation: Optional[ClinicalValidation] = None
+    provenance: Optional[ContentProvenance] = None
+
+
+class ExplanationResponse(BaseModel):
+    prediction: str
+    confidence: float
+    explanation: str
+    study_instance_uid: Optional[str] = None
+    site_id: Optional[str] = None
+    shadow_mode: bool = False
+    validation: Optional[ClinicalValidation] = None
+    provenance: Optional[ContentProvenance] = None
 
 
 STRUCTURED_FEEDBACK_ERROR_CATEGORIES = frozenset(
@@ -359,6 +401,20 @@ class ReportDraftSignBody(BaseModel):
     signer_role: str = Field(..., min_length=1, max_length=120)
     npi_or_license: Optional[str] = Field(None, max_length=64)
     acknowledged_disclaimer: bool = Field(..., description="Must be true to sign")
+
+
+class ReportAttestBody(BaseModel):
+    attested_by: str = Field(..., min_length=1, max_length=200)
+    attestation_text: str = Field(..., min_length=1)
+
+
+class ContentAttestBody(BaseModel):
+    """Attestation for free-text /report or explanation output (no draft id)."""
+
+    attested_by: str = Field(..., min_length=1, max_length=200)
+    attestation_text: str = Field(..., min_length=1)
+    content_kind: Literal["report", "explanation"] = "report"
+    content_sha256: Optional[str] = Field(None, max_length=64)
 
 
 class FindingsDisagreeBody(BaseModel):
@@ -1139,24 +1195,17 @@ async def get_trial_candidate_api(
     d["id"] = str(d.pop("_id", ""))
     return d
 
-def _image_bytes_for_llm(bytes_data: bytes, filename: str, content_type: str) -> bytes:
-    """Return image bytes suitable for LLM (PIL-compatible). For DICOM, convert slice to PNG bytes."""
-    is_dicom = (
-        filename.lower().endswith(".dcm")
-        or filename.lower().endswith(".dicom")
-        or (content_type or "").lower() in ("application/dicom", "application/dicom+xml")
-    )
-    if is_dicom:
-        from src.data.dicom_loader import load_dicom_slice
-        import io
-        from PIL import Image
-        batch, _ = load_dicom_slice(bytes_data, target_size=(224, 224), normalize=True)
-        arr = (batch[0] * 255).clip(0, 255).astype("uint8")
-        img = Image.fromarray(arr)
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return buf.getvalue()
-    return bytes_data
+def _saliency_overlay_bytes(saliency_b64: Optional[str]) -> Optional[bytes]:
+    """Decode Grad-CAM / saliency PNG bytes. Never used for raw diagnostic pixels."""
+    raw = (saliency_b64 or "").strip()
+    if not raw:
+        return None
+    import base64
+
+    try:
+        return base64.b64decode(raw)
+    except Exception:
+        return None
 
 
 @app.post("/report", response_model=ReportResponse)
@@ -1171,7 +1220,11 @@ async def report(
     _api_key: Optional[str] = Depends(verify_api_key),
 ):
     """
-    Same as /predict, plus LLM-generated report draft (requires GOOGLE_API_KEY).
+    Same as /predict, plus an LLM narration of the classifier output.
+
+    The uploaded file is used only for Keras inference. Raw scan bytes are
+    never sent to Claude (FDA Non-Device CDS Criterion 1). Optional visual
+    context is the Grad-CAM overlay only.
     """
     bytes_data = await file.read()
     if not bytes_data:
@@ -1196,7 +1249,7 @@ async def report(
     try:
         from src.inference.inference_exceptions import InputValidationFailed
 
-        label, conf, probs, _, _, _ = _run_predict(bytes_data, model, filename, content_type)
+        label, conf, probs, _, infer_meta, _ = _run_predict(bytes_data, model, filename, content_type)
     except InputValidationFailed as exc:
         raise HTTPException(status_code=422, detail=exc.detail) from exc
     except ValueError as e:
@@ -1208,8 +1261,10 @@ async def report(
 
     try:
         from src.llm.report import build_report
+        from src.llm.validation import ValidationResult
         from src.rag.retrieval import retrieve_evidence
-        image_for_llm = _image_bytes_for_llm(bytes_data, filename, content_type)
+
+        visual_overlay = _saliency_overlay_bytes((infer_meta or {}).get("saliency_map_b64"))
 
         # Retrieve grounding evidence (MongoDB Atlas Vector Search) before generating the report.
         evidence_context = ""
@@ -1230,26 +1285,40 @@ async def report(
         except Exception:
             evidence_context = ""
 
-        report_text = build_report(
-            image_for_llm,
+        report_text, gate = build_report(
             label,
             conf,
             evidence_context=evidence_context,
+            probabilities=probs,
+            visual_overlay=visual_overlay,
         )
         if not report_text:
             report_text = f"Prediction: {label} ({conf:.2%}). No LLM response."
+            gate = ValidationResult(passed=True, used_fallback=True)
     except Exception as e:
+        from src.llm.validation import ValidationResult as _VR
+
         report_text = f"Prediction: {label} ({conf:.2%}). Report generation failed: {e}"
+        gate = _VR(passed=True, used_fallback=True)
 
     await _log_api_clinical(
         "api_report",
         study_instance_uid,
         site_id,
         shadow_mode,
-        {"model": model, "label": label, "confidence": conf, "probabilities": probs},
+        {
+            "model": model,
+            "label": label,
+            "confidence": conf,
+            "probabilities": probs,
+            "validation": gate.to_dict(),
+        },
     )
     _maybe_shadow_store(shadow_mode, study_instance_uid, site_id, model, label, conf, probs, "/report")
 
+    from src.llm.content_provenance import build_content_provenance
+
+    prov = build_content_provenance(prompt_template_name="report", gate=gate)
     return ReportResponse(
         prediction=label,
         confidence=conf,
@@ -1257,6 +1326,73 @@ async def report(
         study_instance_uid=study_instance_uid,
         site_id=site_id,
         shadow_mode=shadow_mode,
+        validation=ClinicalValidation(**{k: v for k, v in gate.to_dict().items() if k in ClinicalValidation.model_fields}),
+        provenance=ContentProvenance(**prov),
+    )
+
+
+@app.post("/explain", response_model=ExplanationResponse)
+@limiter.limit("60/minute")
+async def explain_scan(
+    request: Request,
+    file: UploadFile = File(...),
+    model: str = "custom_cnn",
+    study_instance_uid: Optional[str] = Form(None),
+    site_id: Optional[str] = Form(None),
+    shadow_mode: bool = Form(False),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    """
+    Narrate the CNN/U-Net result. Raw scan bytes are used only for Keras
+    inference — they are never sent to Claude (FDA Non-Device CDS Criterion 1).
+    """
+    bytes_data = await file.read()
+    if not bytes_data:
+        raise HTTPException(400, detail="Empty file")
+    filename = file.filename or "image"
+    content_type = file.content_type or ""
+    try:
+        from src.inference.inference_exceptions import InputValidationFailed
+
+        label, conf, probs, _, infer_meta, _ = _run_predict(bytes_data, model, filename, content_type)
+    except InputValidationFailed as exc:
+        raise HTTPException(status_code=422, detail=exc.detail) from exc
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    if label is None:
+        raise HTTPException(503, detail="Model not available or load failed")
+
+    try:
+        from src.llm.explanations import explain_image
+
+        visual_overlay = _saliency_overlay_bytes((infer_meta or {}).get("saliency_map_b64"))
+        explanation, gate, prov = explain_image(
+            label,
+            confidence=conf,
+            probabilities=probs,
+            visual_overlay=visual_overlay,
+        )
+    except Exception as e:
+        from src.llm.content_provenance import build_content_provenance
+        from src.llm.validation import ValidationResult as _VR
+
+        explanation = f"Model prediction: {label}. Explanation unavailable: {e}"
+        gate = _VR(passed=True, used_fallback=True)
+        prov = build_content_provenance(prompt_template_name="explanation", gate=gate)
+
+    return ExplanationResponse(
+        prediction=label,
+        confidence=conf,
+        explanation=explanation,
+        study_instance_uid=study_instance_uid,
+        site_id=site_id,
+        shadow_mode=shadow_mode,
+        validation=ClinicalValidation(
+            **{k: v for k, v in gate.to_dict().items() if k in ClinicalValidation.model_fields}
+        ),
+        provenance=ContentProvenance(**prov),
     )
 
 
@@ -1441,6 +1577,116 @@ async def regenerate_report_draft_section(
     return {"ok": True, "version": history_entry["version"]}
 
 
+@app.post("/report/{report_id}/attest")
+@limiter.limit("30/minute")
+async def attest_report_draft(
+    request: Request,
+    report_id: str,
+    body: ReportAttestBody,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    api_key_user: Optional[str] = Depends(verify_api_key),
+):
+    """
+    Explicit clinician attestation — distinct from viewing and from e-sign.
+
+    Required before PDF/FHIR export or POST /report/{id}/sign. Does not
+    bypass Prompt 1/2/4 automated gates.
+    """
+    from src.api.attestation import (
+        DEFAULT_ATTESTATION_TEXT,
+        attestation_text_is_valid,
+        report_is_attested,
+    )
+    from src.inference.audit_log import log_report_draft_event
+    from src.db.repositories import get_report_draft, replace_report_draft
+
+    user = _report_draft_user(x_user_id, api_key_user)
+    if not str(body.attested_by or "").strip():
+        raise HTTPException(status_code=422, detail="attested_by is required")
+    if not str(body.attestation_text or "").strip():
+        raise HTTPException(status_code=422, detail="attestation_text is required")
+    if not attestation_text_is_valid(body.attestation_text):
+        raise HTTPException(
+            status_code=400,
+            detail="attestation_text must be the required clinician attestation statement",
+        )
+
+    report = await get_report_draft(report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    if report.get("status") in ("signed", "rejected"):
+        raise HTTPException(status_code=400, detail=f"Cannot attest a {report['status']} report")
+    if report_is_attested(report):
+        return {
+            "ok": True,
+            "already_attested": True,
+            "attested_by": report.get("attested_by"),
+            "attested_at": report.get("attested_at"),
+            "audit_id": report.get("attestation_audit_id"),
+        }
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    audit_id = log_report_draft_event(
+        event_type="report_attested",
+        user_id=user,
+        payload={
+            "report_id": report_id,
+            "study_uid": report.get("study_uid"),
+            "attested_by": body.attested_by.strip(),
+            "attestation_text": DEFAULT_ATTESTATION_TEXT,
+            "timestamp_utc": now,
+        },
+    )
+    report["attested_by"] = body.attested_by.strip()
+    report["attested_at"] = now
+    report["attestation_text"] = DEFAULT_ATTESTATION_TEXT
+    report["attestation_audit_id"] = audit_id
+    report["last_modified"] = now
+    await replace_report_draft(report_id, report)
+    return {
+        "ok": True,
+        "already_attested": False,
+        "attested_by": report["attested_by"],
+        "attested_at": now,
+        "audit_id": audit_id,
+    }
+
+
+@app.post("/report/attest-content")
+@limiter.limit("30/minute")
+async def attest_free_text_content(
+    request: Request,
+    body: ContentAttestBody,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    api_key_user: Optional[str] = Depends(verify_api_key),
+):
+    """Attest a free-text /report or explanation when there is no draft id."""
+    from src.api.attestation import DEFAULT_ATTESTATION_TEXT, attestation_text_is_valid
+    from src.inference.audit_log import log_report_draft_event
+
+    user = _report_draft_user(x_user_id, api_key_user)
+    if not str(body.attested_by or "").strip() or not str(body.attestation_text or "").strip():
+        raise HTTPException(status_code=422, detail="attested_by and attestation_text are required")
+    if not attestation_text_is_valid(body.attestation_text):
+        raise HTTPException(
+            status_code=400,
+            detail="attestation_text must be the required clinician attestation statement",
+        )
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    audit_id = log_report_draft_event(
+        event_type="content_attested",
+        user_id=user,
+        payload={
+            "attested_by": body.attested_by.strip(),
+            "attestation_text": DEFAULT_ATTESTATION_TEXT,
+            "content_kind": body.content_kind,
+            "content_sha256": body.content_sha256,
+            "timestamp_utc": now,
+        },
+    )
+    return {"ok": True, "audit_id": audit_id, "attested_at": now}
+
+
 @app.post("/report/{report_id}/sign")
 @limiter.limit("20/minute")
 async def sign_report_draft(
@@ -1463,6 +1709,9 @@ async def sign_report_draft(
         raise HTTPException(status_code=404, detail="Report not found")
     if report.get("status") == "signed":
         raise HTTPException(status_code=400, detail="Already signed")
+    from src.api.attestation import require_attested
+
+    require_attested(report)
 
     final_text = serialize_report_for_hash(report)
     text_hash = sha256_text(final_text)
@@ -1529,6 +1778,9 @@ async def export_report_draft_pdf(
     report = await get_report_draft(report_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    from src.api.attestation import require_attested
+
+    require_attested(report)
     footer_audit = str(report.get("signature_audit_id") or report.get("report_id") or "")
     footer_hash = str(report.get("signed_text_hash") or "unsigned")
     try:
@@ -1555,6 +1807,9 @@ async def export_report_draft_fhir(
     report = await get_report_draft(report_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    from src.api.attestation import require_attested
+
+    require_attested(report)
     pdf_url = f"/report/{report_id}/pdf"
     dr = build_fhir_diagnostic_report(report, pdf_url=pdf_url)
     if report.get("status") != "signed":

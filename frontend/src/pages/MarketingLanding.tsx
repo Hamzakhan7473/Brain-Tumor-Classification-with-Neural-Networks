@@ -41,19 +41,16 @@ const TRIO = [
     symbol: "chart.bar" as const,
     title: "Measure",
     caption: "Regional WMH volumes — periventricular, deep, and infratentorial cc for trial endpoints.",
-    gradient: "linear-gradient(160deg, #22d3ee 0%, #0e7490 48%, #083344 100%)",
   },
   {
     symbol: "eye" as const,
     title: "Review",
     caption: "BICR dual-read workflow with blinded reads, adjudication, and time-point locking.",
-    gradient: "linear-gradient(160deg, #a78bfa 0%, #6d28d9 50%, #2e1065 100%)",
   },
   {
     symbol: "doc.text" as const,
     title: "Sign",
     caption: "Structured PDF reports with longitudinal deltas and signed audit hashes.",
-    gradient: "linear-gradient(160deg, #f0abfc 0%, #c026d3 48%, #4a044e 100%)",
   },
 ];
 
@@ -245,7 +242,7 @@ export default function MarketingLanding() {
         </div>
         <div className="nsl-trio-grid">
           {TRIO.map((item) => (
-            <article key={item.title} className="nsl-trio-card" style={{ background: item.gradient }}>
+            <article key={item.title} className="nsl-trio-card">
               <div className="nsl-trio-icon" aria-hidden>
                 <IosSymbol name={item.symbol} size={26} strokeWidth={1.5} />
               </div>

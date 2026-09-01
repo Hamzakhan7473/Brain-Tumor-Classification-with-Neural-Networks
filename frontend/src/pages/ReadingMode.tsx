@@ -2,8 +2,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { AppPage } from "../components/layout/AppPage";
 import EvidenceDrawer, { EvidenceCitation } from "../components/EvidenceDrawer";
-import { getCase } from "../api/client";
+import { getCase, attestGeneratedContent, type ContentProvenance } from "../api/client";
 import { IosButton, IosLinkButton } from "../components/ui/IosButton";
+import { AttestationGate, canFinalize } from "../components/ui/AttestationGate";
+import { ProviderBadge } from "../components/ui/ProviderBadge";
+import { useFeatures } from "../hooks/useFeatures";
 
 type StoredPrediction = {
   scanBase64: string;
@@ -22,6 +25,7 @@ type StoredReport = {
   study_instance_uid: string;
   report_text: string;
   timestamp: string;
+  provenance?: ContentProvenance | null;
 };
 
 function getSessionPrediction(studyId: string): StoredPrediction | null {
@@ -59,7 +63,11 @@ export default function ReadingMode() {
   const [check1, setCheck1] = useState<boolean>(false);
   const [check2, setCheck2] = useState<boolean>(false);
   const [check3, setCheck3] = useState<boolean>(false);
-  const allChecked = check1 && check2 && check3;
+  const [attested, setAttested] = useState(false);
+  const [attestBusy, setAttestBusy] = useState(false);
+  const [attestErr, setAttestErr] = useState<string | null>(null);
+  const { llmProvider } = useFeatures();
+  const allChecked = check1 && check2 && check3 && (report ? attested : true);
 
   useEffect(() => {
     let mounted = true;
@@ -245,6 +253,11 @@ export default function ReadingMode() {
               {report?.report_text ||
                 "No report draft stored for this case in this session.\n\nTip: generate a report on the Report page; it will appear here automatically."}
             </pre>
+            {report?.report_text ? (
+              <div style={{ marginTop: 8 }}>
+                <ProviderBadge provider={llmProvider} provenance={report.provenance} />
+              </div>
+            ) : null}
             {report?.timestamp ? (
               <div style={{ marginTop: 8, fontSize: 12, color: "var(--ink-mute)" }}>
                 Draft generated: {new Date(report.timestamp).toLocaleString()}
@@ -272,11 +285,41 @@ export default function ReadingMode() {
               </label>
             </div>
 
+            {report?.report_text ? (
+              <div style={{ marginTop: 14 }}>
+                <AttestationGate
+                  attested={attested}
+                  busy={attestBusy}
+                  error={attestErr}
+                  onSubmit={async (name, text) => {
+                    setAttestBusy(true);
+                    setAttestErr(null);
+                    try {
+                      await attestGeneratedContent({
+                        attested_by: name,
+                        attestation_text: text,
+                        content_kind: "report",
+                      });
+                      setAttested(true);
+                    } catch (e) {
+                      setAttestErr(e instanceof Error ? e.message : "Attestation failed");
+                    } finally {
+                      setAttestBusy(false);
+                    }
+                  }}
+                />
+              </div>
+            ) : null}
+
             <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
               <IosButton variant="secondary" onClick={() => setDrawerOpen(true)}>
                 View evidence
               </IosButton>
-              <IosButton variant="primary" disabled={!allChecked} onClick={onMarkReviewed}>
+              <IosButton
+                variant="primary"
+                disabled={!allChecked || !canFinalize(report?.report_text ? attested : true)}
+                onClick={onMarkReviewed}
+              >
                 Sign / Mark reviewed
               </IosButton>
             </div>
