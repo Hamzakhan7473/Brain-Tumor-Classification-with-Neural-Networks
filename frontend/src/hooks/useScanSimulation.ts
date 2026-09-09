@@ -111,16 +111,20 @@ function coerceWmh(raw: unknown): WMHResult | undefined {
 function buildGuardrails(r: PredictBackendResponse): ScanGuardrailsMeta | undefined {
   const warns = r.warnings ?? [];
   const hasAudit = Boolean(r.audit_id && String(r.audit_id).length > 0);
-  if (!warns.length && !hasAudit && !r.validation && !r.uncertainty) {
+  if (!warns.length && !hasAudit && !r.validation && !r.uncertainty && !r.qc) {
     return undefined;
   }
+  const validation = {
+    ...(r.validation || {}),
+    ...(r.qc ? { qc: r.qc, qc_overall: r.qc.overall } : {}),
+  };
   return {
     warnings: warns,
     auditId: r.audit_id ?? null,
     auditTimestamp: r.audit_timestamp ?? null,
     disposition: r.disposition,
     radiologistActionRequired: r.radiologist_action_required ?? null,
-    validation: r.validation,
+    validation: Object.keys(validation).length ? validation : r.validation,
     uncertainty: r.uncertainty,
   };
 }

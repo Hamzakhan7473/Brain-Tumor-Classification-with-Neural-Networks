@@ -63,12 +63,11 @@ def explain_image(
     *,
     confidence: Optional[float] = None,
     probabilities: Optional[dict] = None,
-    visual_overlay: Optional[bytes] = None,
+    visual_overlay: Optional[dict] = None,
 ) -> tuple[str, ValidationResult, dict[str, Any]]:
     """Narrate a classifier/U-Net result. Does not accept raw scan pixels.
 
-    ``visual_overlay`` may be a Grad-CAM / saliency PNG (model output
-    visualization only). Raw MRI / DICOM bytes must never be passed here.
+    ``visual_overlay`` is heatmap metadata ``{present, bbox_ids}`` only.
 
     Returns (text, clinical_gate, provenance).
     """

@@ -11,9 +11,10 @@ import {
 } from "../api/client";
 import { fetchShadowQueue } from "../lib/api";
 import type { ShadowQueueResponse } from "../lib/api";
+import { TRIAGE_BANNER } from "../lib/triageCopy";
 
 type LabelClass = "ok" | "warn" | "danger";
-type Verdict = "agree" | "partial" | "disagree";
+type Verdict = "agree" | "overcall" | "undercall" | "wrong_anatomy" | "wrong_delta" | "useless";
 type Task = "classification" | "segmentation";
 
 type CaseReview = {
@@ -205,9 +206,9 @@ function PredictionCard({ cr }: { cr: CaseReview }) {
 
   return (
     <div className="card" style={{ marginBottom: 12 }}>
-      <div style={{ fontWeight: 800, marginBottom: 8 }}>AI prediction</div>
+      <div style={{ fontWeight: 800, marginBottom: 8 }}>{TRIAGE_BANNER}</div>
       <div style={{ fontSize: 22, fontWeight: 800, color: labelTone(mr.label_class) }}>
-        {mr.label} · {(mr.confidence * 100).toFixed(1)}% confidence
+        Suggested class (research): {mr.label} · {(mr.confidence * 100).toFixed(1)}%
       </div>
       <div style={{ marginTop: 12 }}>
         {sorted.map(([cls, p]) => {
@@ -260,8 +261,11 @@ function VerdictPicker({ value, onChange }: { value: Verdict | null; onChange: (
   return (
     <div role="group" aria-label="Verdict" className="app-verdict-grid">
       {btn("agree", "Agree", "Model matches your read", "✓")}
-      {btn("partial", "Partially", "Mostly right with material caveats", "◐")}
-      {btn("disagree", "Disagree", "Wrong finding or severity", "✕")}
+      {btn("overcall", "Overcall", "Called more than is present", "↑")}
+      {btn("undercall", "Undercall", "Missed or understated finding", "↓")}
+      {btn("wrong_anatomy", "Wrong anatomy", "Right finding, wrong location", "⌖")}
+      {btn("wrong_delta", "Wrong delta", "Change vs prior is off", "Δ")}
+      {btn("useless", "Useless", "Draft did not help the read", "✕")}
     </div>
   );
 }
@@ -352,10 +356,8 @@ export default function ClinicalFeedback() {
 
   const canSubmit = useMemo(() => {
     if (!verdict || !cr) return false;
-    if (verdict === "agree") return true;
-    if (cr.task === "classification") return Boolean(gtClass);
-    return Boolean(gtSev);
-  }, [verdict, cr, gtClass, gtSev]);
+    return Boolean(cr.model_run?.audit_id);
+  }, [verdict, cr]);
 
   const toggleErr = (t: string) => {
     setErrors((prev) => {
@@ -415,7 +417,12 @@ export default function ClinicalFeedback() {
             : { severity: gtSev };
       const out = await submitStructuredClinicalFeedback({
         case_id: cr.case_id,
+        audit_id: cr.model_run.audit_id,
         verdict,
+        codes: [verdict],
+        measurements_unedited: true,
+        ingest_at: cr.received_at ?? null,
+        draft_ready_at: cr.received_at ?? null,
         ground_truth: groundTruth,
         error_categories: Array.from(errors),
         clinical_notes: notes.trim() || null,
@@ -439,8 +446,11 @@ export default function ClinicalFeedback() {
         return;
       }
       if (e.key === "a" || e.key === "A") setVerdict("agree");
-      if (e.key === "p" || e.key === "P") setVerdict("partial");
-      if (e.key === "d" || e.key === "D") setVerdict("disagree");
+      if (e.key === "o" || e.key === "O") setVerdict("overcall");
+      if (e.key === "u" || e.key === "U") setVerdict("undercall");
+      if (e.key === "w" || e.key === "W") setVerdict("wrong_anatomy");
+      if (e.key === "l" || e.key === "L") setVerdict("wrong_delta");
+      if (e.key === "x" || e.key === "X") setVerdict("useless");
       if (e.key === "n" || e.key === "N") {
         e.preventDefault();
         notesRef.current?.focus();
@@ -579,7 +589,7 @@ export default function ClinicalFeedback() {
       <ShadowModeBanner />
       <div className="container" style={{ maxWidth: 1040, marginTop: 12 }}>
         <p className="text-ios-footnote" style={{ color: "var(--modern-ink-soft)", marginBottom: 12 }}>
-          Shadow mode feedback: verdict is recorded for model improvement only — not sent to the clinical record.
+          Shadow mode feedback: verdict is persisted for QA metrics only. Clicks are not training data and are not sent to the clinical record.
         </p>
 
         <header style={{ marginBottom: 12 }}>
@@ -710,7 +720,7 @@ export default function ClinicalFeedback() {
                 }}
               />
               <div className="text-ios-caption2" style={{ color: "var(--ink-mute)", marginTop: 4 }}>
-                {notes.length}/500 · Notes improve retraining quality when tied to error tags.
+                {notes.length}/500 · Optional note stored with the event (not used for training).
               </div>
             </div>
 
@@ -770,8 +780,8 @@ export default function ClinicalFeedback() {
             <div className="card">
               <div style={{ fontWeight: 800, marginBottom: 6 }}>How feedback is used</div>
               <p className="text-ios-caption1" style={{ color: "var(--ink-mute)", lineHeight: 1.45 }}>
-                Verdicts are de-identified for model retraining and quality metrics. They are not written to the EHR in
-                shadow mode.
+                Verdicts are persisted for time-to-draft, time-to-feedback, and disagreement metrics. They are not
+                training data and are not written to the EHR.
               </p>
               {recent.length ? (
                 <div style={{ marginTop: 10 }}>
@@ -839,9 +849,12 @@ export default function ClinicalFeedback() {
             </div>
             <ul className="text-ios-footnote" style={{ color: "var(--ink-soft)", paddingLeft: 18, lineHeight: 1.6 }}>
               <li>A — Agree</li>
-              <li>P — Partially</li>
-              <li>D — Disagree</li>
-              <li>1–4 — Pick class (when disagree/partial, classification)</li>
+              <li>O — Overcall</li>
+              <li>U — Undercall</li>
+              <li>W — Wrong anatomy</li>
+              <li>L — Wrong delta</li>
+              <li>X — Useless</li>
+              <li>1–4 — Optional class (when not agree, classification)</li>
               <li>N — Focus notes</li>
               <li>Cmd/Ctrl + Enter — Submit</li>
               <li>Esc — Skip / back</li>

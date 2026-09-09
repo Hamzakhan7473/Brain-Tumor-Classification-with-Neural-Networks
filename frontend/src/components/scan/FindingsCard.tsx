@@ -16,6 +16,7 @@ import { IosButton } from "../ui/IosButton";
 import { AttestationGate } from "../ui/AttestationGate";
 import { ProviderBadge } from "../ui/ProviderBadge";
 import { useFeatures } from "../../hooks/useFeatures";
+import { TRIAGE_BANNER, triageSuggestedLine } from "../../lib/triageCopy";
 
 type FindingsCardProps = {
   findings: ScanFindings | null;
@@ -53,11 +54,6 @@ function capitalizeLeading(s: string): string {
   return s.slice(0, 1).toUpperCase() + s.slice(1);
 }
 
-function isNoTumorLabel(pred: string): boolean {
-  const t = pred.trim().toLowerCase().replace(/\s+/g, "");
-  return t === "notumor" || t === "no_tumor";
-}
-
 function fazekasFromSeverity(g: WMHSeverity): number {
   if (g === "Normal") return 0;
   if (g === "Mild") return 1;
@@ -73,15 +69,8 @@ function wmhSyntheticPercentile(w: WMHResult): number {
   return Math.min(99, Math.max(51, v));
 }
 
-function normPredKey(pred: string): string {
-  return pred.trim().toLowerCase().replace(/\s+/g, "_").replace(/^no_/i, "");
-}
-
 /** Serif-clinical prose with &lt;strong&gt; emphasis (rendered safely as JSX fragments). */
 function generateImpression(findings: ScanFindings): React.ReactNode {
-  const seg = findings.isSegmentation;
-  const confPct = `${(findings.confidence * 100).toFixed(1)}%`;
-
   if (findings.guardrails?.disposition === "indeterminate") {
     const msg =
       findings.guardrails.radiologistActionRequired?.trim() ||
@@ -93,7 +82,7 @@ function generateImpression(findings: ScanFindings): React.ReactNode {
     );
   }
 
-  if (seg && findings.wmh) {
+  if (findings.isSegmentation && findings.wmh) {
     const w = findings.wmh;
     const pctOrdinal =
       typeof w.age_matched_percentile === "number"
@@ -137,44 +126,9 @@ function generateImpression(findings: ScanFindings): React.ReactNode {
     );
   }
 
-  const nk = normPredKey(findings.prediction);
-  if (isNoTumorLabel(findings.prediction) || nk === "no_tumor" || nk === "notumor") {
-    return (
-      <>
-        <strong>No mass lesion or focal abnormality identified</strong> on the reviewed slices. Confidence:{" "}
-        <strong>{confPct}</strong>.
-      </>
-    );
-  }
-  if (nk.includes("glioma")) {
-    return (
-      <>
-        Findings suggestive of <strong>glial neoplasm</strong> with <strong>{confPct}</strong> model confidence. Tissue
-        characterization and grading require histopathologic correlation.
-      </>
-    );
-  }
-  if (nk.includes("meningioma")) {
-    return (
-      <>
-        Extra-axial mass with imaging features suggestive of <strong>meningioma</strong>. Confidence:{" "}
-        <strong>{confPct}</strong>.
-      </>
-    );
-  }
-  if (nk.includes("pituitary")) {
-    return (
-      <>
-        Sellar/parasellar lesion with imaging features consistent with <strong>pituitary adenoma</strong>. Confidence:{" "}
-        <strong>{confPct}</strong>.
-      </>
-    );
-  }
-
   return (
     <>
-      <strong>{capitalizeLeading(findings.prediction)}</strong> — model confidence <strong>{confPct}</strong>. Correlation
-      with histopathologic or advanced imaging advised.
+      {TRIAGE_BANNER}. {triageSuggestedLine(findings.prediction)}
     </>
   );
 }
@@ -240,16 +194,15 @@ function buildMetricsWmhRows(w: WMHResult): ReportMetricRow[] {
   return rows;
 }
 
-function buildMetrics2dRows(findings: ScanFindings, tumorHighlight: boolean): ReportMetricRow[] {
+function buildMetrics2dRows(findings: ScanFindings): ReportMetricRow[] {
   const sorted = [...findings.classProbs].sort((a, b) => b.probability - a.probability);
-  const predTone: ValueTone = tumorHighlight ? "danger" : "ok";
   const ct = confidenceTone(findings.confidence);
 
   const rows: ReportMetricRow[] = [
     {
-      label: "Predicted class",
+      label: "Triage class (research)",
       value: capitalizeLeading(findings.prediction),
-      severity: predTone,
+      severity: "neutral",
     },
     {
       label: "Model confidence",
@@ -296,7 +249,11 @@ function transparencyRows(findings: ScanFindings): { label: string; value: strin
     }
   }
 
+  const qcObj = (v.qc && typeof v.qc === "object" ? v.qc : {}) as Record<string, unknown>;
+  const qcOverall = typeof v.qc_overall === "string" ? v.qc_overall : typeof qcObj.overall === "string" ? qcObj.overall : "";
+
   return [
+    { label: "QC", value: qcOverall || "—" },
     { label: "Detected sequence", value: `${seq} (${sc} confidence)` },
     { label: "Voxel size (mm)", value: `${dims} mm` },
     { label: "Distribution check", value: ood ? "⚠ Out of distribution" : "✓ Within offline validation band" },
@@ -466,7 +423,7 @@ export default function FindingsCard({
     try {
       await findingsDisagreeApi({ audit_id: aid, notes: disagreeNotes.trim(), apiKeyOverride: apiKey });
       setDisagreeNotes("");
-      setSignNote("Imaging disagreement captured for model improvement.");
+      setSignNote("Imaging disagreement persisted for QA metrics.");
     } catch (e) {
       setSignNote(e instanceof Error ? e.message : String(e));
     } finally {
@@ -487,17 +444,12 @@ export default function FindingsCard({
 
   const impression = useMemo(() => (findings ? generateImpression(findings) : null), [findings]);
 
-  const tumorRiskDanger = useMemo(() => {
-    if (!findings || findings.isSegmentation) return false;
-    return !isNoTumorLabel(findings.prediction);
-  }, [findings]);
-
   const metricRows = useMemo((): ReportMetricRow[] => {
     if (!findings) return [];
     if (findings.isSegmentation && findings.wmh) return buildMetricsWmhRows(findings.wmh);
-    if (!findings.isSegmentation) return buildMetrics2dRows(findings, tumorRiskDanger);
+    if (!findings.isSegmentation) return buildMetrics2dRows(findings);
     return [];
-  }, [findings, tumorRiskDanger]);
+  }, [findings]);
 
   if (phase === "error") {
     const raw = (apiError || "").trim() || "The model could not analyze this scan.";
@@ -630,17 +582,33 @@ export default function FindingsCard({
         >
           {findings.modelName}
         </span>
+        {!seg ? (
+          <span
+            className="text-ios-caption2 font-semibold font-ios"
+            data-testid="triage-chip"
+            style={{
+              padding: "4px 10px",
+              borderRadius: "var(--radius-ios)",
+              border: "1px solid var(--line)",
+              color: "var(--ink-mid)",
+              background: "var(--surface)",
+            }}
+          >
+            {TRIAGE_BANNER}
+          </span>
+        ) : null}
         <span className="text-ios-caption2 font-medium font-ios text-ns-muted">{findings.inferenceMs}ms</span>
         {findings.isSimulated ? <span className="ios-sim-badge">Simulated</span> : null}
       </div>
 
       {!seg ? (
         <div
-          className={tumorRiskDanger ? "ios-risk-banner" : "ios-risk-banner--ok"}
+          className="ios-risk-banner--muted"
           role="status"
+          data-testid="triage-banner"
           style={{ marginLeft: 14, marginRight: 14 }}
         >
-          {tumorRiskDanger ? "Tumor detected — research result only" : "No tumor detected"}
+          {TRIAGE_BANNER}
         </div>
       ) : findings.wmh ? (
         findings.wmh.risk_level === "High" || findings.wmh.risk_level === "Very High" ? (

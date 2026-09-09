@@ -29,7 +29,7 @@ def append_shadow_result(payload: Dict[str, Any]) -> None:
 
 
 def append_clinical_feedback(payload: Dict[str, Any]) -> None:
-    """Record radiologist feedback (agree / wrong class / unclear, optional correction)."""
+    """Append one neurosight.feedback.v1 (or legacy) row. Persist only — not training data."""
     record = {
         "timestamp": datetime.utcnow().isoformat() + "Z",
         "kind": "clinical_feedback",

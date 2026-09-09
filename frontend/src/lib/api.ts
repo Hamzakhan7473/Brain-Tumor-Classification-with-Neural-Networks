@@ -64,6 +64,12 @@ export interface PredictBackendResponse {
   uncertainty?: Record<string, unknown>;
   validation?: Record<string, unknown>;
   display_prediction?: string | null;
+  qc?: {
+    overall?: "pass" | "degraded" | "fail" | string;
+    flags?: Array<{ code?: string; severity?: string; engine?: string }>;
+    engines?: Record<string, unknown>;
+  };
+  trusted?: boolean;
 }
 
 export async function predict(
@@ -297,9 +303,15 @@ export async function fetchShadowConfig(apiKeyOverride?: string): Promise<{
 
 export async function submitShadowFeedback(
   studyUid: string,
-  input: { verdict: "agree" | "disagree" | "partial"; ground_truth?: Record<string, unknown>; notes?: string },
+  input: {
+    audit_id: string;
+    verdict: "agree" | "disagree" | "partial" | "overcall" | "undercall" | "wrong_anatomy" | "wrong_delta" | "useless";
+    ground_truth?: Record<string, unknown>;
+    notes?: string;
+    measurements_unedited?: boolean;
+  },
   apiKeyOverride?: string,
-): Promise<{ ok: boolean; audit_id?: string }> {
+): Promise<{ ok: boolean; audit_id?: string; feedback_id?: string }> {
   const urlStr = resolvePostUrl(`/shadow/cases/${encodeURIComponent(studyUid)}/feedback`);
   const key = mergedApiKey(apiKeyOverride);
   const headers: Record<string, string> = { "Content-Type": "application/json" };

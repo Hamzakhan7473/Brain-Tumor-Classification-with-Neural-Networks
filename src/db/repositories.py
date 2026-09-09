@@ -427,6 +427,7 @@ async def _ensure_clinical_feedback_indexes(coll: Any) -> None:
         await coll.create_index([("study_instance_uid", 1)])
         await coll.create_index([("reviewer.user_id", 1), ("timing.submitted_at", -1)])
         await coll.create_index([("verdict", 1), ("timing.submitted_at", -1)])
+        await coll.create_index([("audit_id", 1)])
         await coll.create_index([("used_for_retraining", 1)])
     except Exception:
         pass
@@ -473,64 +474,45 @@ async def get_latest_structured_feedback_for_case(case_id: str) -> Optional[Dict
     return await coll.find_one(q, sort=[("timestamp", -1)])
 
 
+def _feedback_time_spent_s(row: Dict[str, Any]) -> int:
+    timing = row.get("timing") if isinstance(row.get("timing"), dict) else {}
+    ev = row.get("feedback_event") if isinstance(row.get("feedback_event"), dict) else {}
+    ev_t = ev.get("timing") if isinstance(ev.get("timing"), dict) else {}
+    raw = timing.get("time_spent_s") or timing.get("time_to_feedback_s") or ev_t.get("time_to_feedback_s") or 0
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
 async def aggregate_clinical_feedback_stats(user_id: str) -> Dict[str, Any]:
-    """Rolling monthly stats for GET /clinical/feedback/stats."""
+    """Monthly agreement plus neurosight.feedback.v1 metrics from stored events."""
     from datetime import date, datetime, time, timezone
 
+    from src.clinical.feedback_event import aggregate_feedback_metrics
+
     month_start = datetime.combine(date.today().replace(day=1), time.min, tzinfo=timezone.utc)
-
-    db = get_motor_database()
-    settings = load_mongo_settings()
-    if db is None or not settings.enable:
-        rows = [
-            x
-            for x in _STRUCTURED_CLINICAL_FB_MEMORY
-            if x.get("schema_version") == "1.0" and (x.get("reviewer") or {}).get("user_id") == user_id
-        ]
-        month_iso = month_start.strftime("%Y-%m-%dT%H:%M:%SZ")
-        rows_m = [x for x in rows if str(x.get("timestamp") or "") >= month_iso]
-        if not rows_m:
-            return {"reviewed_this_month": 0, "agreement_rate": 0.0, "avg_time_s": 0}
-        total = len(rows_m)
-        agree = sum(1 for x in rows_m if x.get("verdict") == "agree")
-        times = [int((x.get("timing") or {}).get("time_spent_s") or 0) for x in rows_m]
-        avg_t = sum(times) / max(len(times), 1)
-        return {
-            "reviewed_this_month": total,
-            "agreement_rate": round(agree / total, 3) if total else 0.0,
-            "avg_time_s": int(round(avg_t)),
-        }
-
-    coll = db[settings.feedback_collection]
     month_iso = month_start.strftime("%Y-%m-%dT%H:%M:%SZ")
-    pipeline = [
-        {
-            "$match": {
-                "schema_version": "1.0",
-                "reviewer.user_id": user_id,
-                "timestamp": {"$gte": month_iso},
-            }
-        },
-        {
-            "$group": {
-                "_id": None,
-                "total": {"$sum": 1},
-                "agreements": {"$sum": {"$cond": [{"$eq": ["$verdict", "agree"]}, 1, 0]}},
-                "avg_time_s": {"$avg": "$timing.time_spent_s"},
-            }
-        },
-    ]
-    cur = coll.aggregate(pipeline)
-    result = await cur.to_list(1)
-    if not result:
-        return {"reviewed_this_month": 0, "agreement_rate": 0.0, "avg_time_s": 0}
-    r = result[0]
-    total = int(r.get("total") or 0)
-    agr = int(r.get("agreements") or 0)
+
+    rows = await list_recent_structured_feedback(user_id, limit=10000)
+    metrics = aggregate_feedback_metrics(rows)
+    rows_m = [x for x in rows if str(x.get("timestamp") or "") >= month_iso]
+    if not rows_m:
+        return {
+            "reviewed_this_month": 0,
+            "agreement_rate": 0.0,
+            "avg_time_s": 0,
+            **metrics,
+        }
+    total = len(rows_m)
+    agree = sum(1 for x in rows_m if x.get("verdict") == "agree")
+    times = [_feedback_time_spent_s(x) for x in rows_m]
+    avg_t = sum(times) / max(len(times), 1)
     return {
         "reviewed_this_month": total,
-        "agreement_rate": round(agr / total, 3) if total else 0.0,
-        "avg_time_s": int(round(float(r.get("avg_time_s") or 0))),
+        "agreement_rate": round(agree / total, 3) if total else 0.0,
+        "avg_time_s": int(round(avg_t)),
+        **metrics,
     }
 
 

@@ -45,6 +45,7 @@ def sha256_text(s: str) -> str:
 
 def build_fhir_diagnostic_report(report: dict[str, Any], *, pdf_url: str) -> dict[str, Any]:
     """FHIR R4 DiagnosticReport-shaped document (research build — validate in consuming systems)."""
+    assert_export_allowed(report)
     rid = str(report.get("report_id") or "report")
     study = str(report.get("study_uid") or report.get("case_id") or "unknown-study")
     signed_at = str(report.get("signed_at") or report.get("last_modified") or "")
@@ -147,8 +148,21 @@ def build_fhir_observations_bundle(report: dict[str, Any]) -> dict[str, Any]:
     return {"resourceType": "Bundle", "type": "collection", "entry": entries}
 
 
+def assert_export_allowed(report: dict[str, Any]) -> None:
+    """Defense in depth: refuse to serialize unsigned, demo, or 2D-only reports."""
+    from src.ingest.path import is_triage_only
+
+    if str(report.get("ingest_path") or "") == "demo":
+        raise PermissionError("Demo / non-clinical path cannot be signed or exported.")
+    if is_triage_only(report):
+        raise PermissionError("2D research triage without a trusted 3D volume cannot be signed or exported.")
+    if report.get("status") != "signed":
+        raise PermissionError("Report must be signed before PDF/FHIR export.")
+
+
 def render_report_pdf_bytes(report: dict[str, Any], *, footer_audit: str, footer_hash: str) -> bytes:
     """Render HTML → PDF via WeasyPrint when available; deterministic SOURCE_DATE_EPOCH."""
+    assert_export_allowed(report)
     os.environ.setdefault("SOURCE_DATE_EPOCH", "946684800")
     try:
         from jinja2 import Environment, FileSystemLoader, select_autoescape

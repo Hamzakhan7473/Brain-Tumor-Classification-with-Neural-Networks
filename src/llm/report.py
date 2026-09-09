@@ -18,10 +18,10 @@ from .validation import (
 
 
 def _template_report(prediction: str, confidence: float) -> str:
+    _ = confidence
     return (
-        f"Prediction: {prediction} ({confidence:.2%}). "
-        "LLM draft withheld after the clinical faithfulness/recall gate. "
-        "This template restates the classifier output only — no additional narrative."
+        f"Slice-wise research classifier suggested class {prediction}; "
+        "not used for measurement or signature."
     )
 
 
@@ -33,11 +33,11 @@ def build_report(
     *,
     evidence_context: Optional[str] = None,
     probabilities: Optional[dict] = None,
-    visual_overlay: Optional[bytes] = None,
+    visual_overlay: Optional[dict] = None,
 ) -> tuple[str, ValidationResult]:
     """Draft a report from structured model output, then run the clinical gate.
 
-    ``visual_overlay`` is Grad-CAM / saliency only — never a raw scan.
+    ``visual_overlay`` is heatmap metadata ``{present, bbox_ids}`` only.
     """
     evidence_block = evidence_context.strip() if evidence_context else ""
     overlay_note = (
@@ -48,20 +48,15 @@ def build_report(
     prompt = (
         f"{CDS_NARRATION_PREAMBLE}\n\n"
         f"{overlay_note}"
-        "Generate a concise clinical-style report that narrates the deterministic "
-        "AI classification result. Use these sections:\n"
-        "1. **Prediction summary**: Restate the prediction and confidence from the structured data.\n"
-        "2. **Additional insights**: What the structured probabilities and (if present) "
-        "saliency overlay imply — not what you perceive in a scan.\n"
-        "3. **Historical/analogous cases**: One or two short, anonymized analogies "
-        "(e.g. 'similar model outputs have been associated with...').\n"
-        "4. **Next steps for patient and doctors**: Suggested follow-up "
-        "(e.g. further imaging, specialist referral).\n"
-        "Use clear headings and plain language. Do not make a definitive diagnosis. "
-        "You MUST mention the model prediction class. "
-        "Do NOT name findings, anatomy, or severity grades that are not in the structured data.\n\n"
+        "The structured output is a slice-wise research / protocol-check triage class. "
+        "It is not a signed finding and must not be written as a diagnosis "
+        "(do not state glioma, meningioma, pituitary adenoma, or no tumor as Findings/Impression).\n"
+        "Write exactly this sentence, filling in the class name from structured data:\n"
+        f"Slice-wise research classifier suggested class {prediction}; "
+        "not used for measurement or signature.\n"
+        "Do not add diagnostic narrative, size, location, or guideline-based tumor workup.\n\n"
         f"Structured model output:\n"
-        f"Model prediction: {prediction} (confidence: {confidence:.2%})."
+        f"Research triage class: {prediction} (confidence: {confidence:.2%})."
     )
 
     if evidence_block:

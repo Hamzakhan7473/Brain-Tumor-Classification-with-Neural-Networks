@@ -1,7 +1,18 @@
 /** Shared clinician-attestation + provenance display helpers (no React). */
 
-export const DEFAULT_ATTESTATION_TEXT =
-  "I have reviewed the AI-generated content against the source measurements and confirm its accuracy";
+export const ATTESTATION_TEXT_TEMPLATE =
+  "I reviewed these statements against the source measurements for audit_id {id}.";
+
+/**
+ * @param {string | null | undefined} auditId
+ */
+export function attestationTextFor(auditId) {
+  const id = String(auditId || "unbound").trim() || "unbound";
+  return ATTESTATION_TEXT_TEMPLATE.replace("{id}", id);
+}
+
+/** Fallback when no measurement audit_id is bound (free-text content attest). */
+export const DEFAULT_ATTESTATION_TEXT = attestationTextFor("unbound");
 
 export const VALIDATOR_STATUSES = /** @type {const} */ (["passed", "warnings", "failed"]);
 
@@ -42,8 +53,13 @@ export function provenanceCaption(provenance) {
 
 /**
  * Finalize/sign is allowed only after a successful attestation submit.
+ * Demo / JPG-as-MRI path and 2D-only triage (export_allowed=false) cannot be signed or exported.
  * @param {boolean} attested
+ * @param {string | null | undefined} [ingestPath]
+ * @param {boolean | null | undefined} [exportAllowed]
  */
-export function canFinalize(attested) {
+export function canFinalize(attested, ingestPath, exportAllowed) {
+  if (String(ingestPath || "").toLowerCase() === "demo") return false;
+  if (exportAllowed === false) return false;
   return Boolean(attested);
 }

@@ -108,6 +108,12 @@ class ReportDraft(BaseModel):
     attested_at: datetime | str | None = None
     attestation_text: str | None = None
     attestation_audit_id: str | None = None
+    ingest_path: str = "clinical"
+    export_allowed: bool = True
+    research: dict[str, Any] | None = None
+    payload_hash: str | None = None
+    last_validated_payload_hash: str | None = None
+    export_events: list[dict[str, Any]] = Field(default_factory=list)
 
     case_snapshot: dict[str, Any] = Field(default_factory=dict)
     model_run_snapshot: dict[str, Any] = Field(default_factory=dict)

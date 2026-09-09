@@ -7,6 +7,7 @@ import { IosButton, IosLinkButton } from "../components/ui/IosButton";
 import { AttestationGate, canFinalize } from "../components/ui/AttestationGate";
 import { ProviderBadge } from "../components/ui/ProviderBadge";
 import { useFeatures } from "../hooks/useFeatures";
+import { TRIAGE_BANNER } from "../lib/triageCopy";
 
 type StoredPrediction = {
   scanBase64: string;
@@ -228,7 +229,10 @@ export default function ReadingMode() {
               <b>Site:</b> {pred?.site_id || "—"}
             </div>
             <div>
-              <b>AI:</b> {pred?.prediction?.label || "—"}{" "}
+              <b>{TRIAGE_BANNER}</b>
+            </div>
+            <div>
+              <b>Suggested class (research):</b> {pred?.prediction?.label || "—"}{" "}
               {pred ? `(${((pred.prediction.confidence || 0) * 100).toFixed(1)}%)` : ""}
             </div>
           </div>

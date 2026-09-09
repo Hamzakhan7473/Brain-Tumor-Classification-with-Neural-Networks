@@ -73,18 +73,43 @@ async def handle_shadow_queue(
 async def handle_shadow_feedback(
     *,
     study_uid: str,
+    audit_id: str,
     verdict: str,
-    ground_truth: Optional[dict],
-    notes: Optional[str],
     user_id: str,
+    codes: Optional[List[str]] = None,
+    ground_truth: Optional[dict] = None,
+    notes: Optional[str] = None,
+    report_id: Optional[str] = None,
+    measurements_unedited: Optional[bool] = True,
+    ingest_at: Optional[str] = None,
+    draft_ready_at: Optional[str] = None,
 ) -> Dict[str, str]:
-    from src.db.repositories import insert_audit_log_event
-    from src.shadow.db import get_shadow_case, submit_shadow_feedback
+    """Persist neurosight.feedback.v1 against StudyResult.audit_id. Clicks are not training data."""
+    import secrets
+
+    from src.clinical.feedback_event import (
+        build_feedback_event,
+        engine_versions_from_run,
+        is_allowed_feedback_code,
+        map_feedback_code,
+    )
+    from src.clinical.shadow_store import append_clinical_feedback
+    from src.db.repositories import insert_audit_log_event, insert_structured_clinical_feedback
+    from src.shadow.db import submit_shadow_feedback
 
     await require_shadow_mongo()
-    v = verdict.lower().strip()
-    if v not in {"agree", "disagree", "partial"}:
-        raise HTTPException(status_code=400, detail="verdict must be agree | disagree | partial")
+    join_audit_id = (audit_id or "").strip()
+    if not join_audit_id:
+        raise HTTPException(status_code=400, detail="audit_id is required (joins StudyResult.audit_id)")
+
+    incoming = list(codes) if codes else [verdict]
+    for raw in incoming:
+        if not is_allowed_feedback_code(raw):
+            raise HTTPException(
+                status_code=400,
+                detail="verdict/codes must be agree | overcall | undercall | wrong_anatomy | wrong_delta | useless",
+            )
+    v, raw_verdict = map_feedback_code(incoming[0])
 
     ok, case = await submit_shadow_feedback(
         study_uid, verdict=v, ground_truth=ground_truth, notes=notes, submitted_by=user_id
@@ -95,12 +120,63 @@ async def handle_shadow_feedback(
         raise HTTPException(status_code=400, detail="Cannot submit feedback on non-shadow case")
 
     mr = (case or {}).get("model_run") or {}
-    audit_id = log_shadow_workflow_event(
+    ts_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    feedback_id = f"fb_{secrets.token_hex(8)}"
+    received = (case or {}).get("received_at")
+    ingest = ingest_at or (received.isoformat() if isinstance(received, datetime) else str(received or "") or None)
+    event = build_feedback_event(
+        feedback_id=feedback_id,
+        audit_id=join_audit_id,
+        report_id=report_id,
+        study_uid=study_uid,
+        codes=incoming,
+        submitted_by=user_id,
+        submitted_at=ts_iso,
+        engine_versions=engine_versions_from_run(mr),
+        optional_note=notes,
+        measurements_unedited=measurements_unedited,
+        ingest_at=str(ingest) if ingest else None,
+        draft_ready_at=draft_ready_at,
+    )
+    await insert_structured_clinical_feedback(
+        {
+            "feedback_id": feedback_id,
+            "case_id": study_uid,
+            "study_instance_uid": study_uid,
+            "audit_id": join_audit_id,
+            "schema_version": "1.0",
+            "schema": "neurosight.feedback.v1",
+            "verdict": v,
+            "verdict_raw": raw_verdict,
+            "feedback_event": event,
+            "measurements_unedited": event["measurements_unedited"],
+            "timing": event["timing"],
+            "reviewer": {"user_id": user_id},
+            "timestamp": ts_iso,
+        }
+    )
+    try:
+        append_clinical_feedback(
+            {
+                "feedback_id": feedback_id,
+                "audit_id": join_audit_id,
+                "study_uid": study_uid,
+                "codes": event["codes"],
+                "schema": "neurosight.feedback.v1",
+            }
+        )
+    except Exception:
+        pass
+
+    log_shadow_workflow_event(
         event_type="shadow_feedback_submitted",
         user_id=user_id,
         payload={
             "study_uid": study_uid,
             "verdict": v,
+            "verdict_raw": raw_verdict,
+            "audit_id": join_audit_id,
+            "feedback_id": feedback_id,
             "model_label": mr.get("label"),
             "model_confidence": mr.get("confidence"),
         },
@@ -108,21 +184,21 @@ async def handle_shadow_feedback(
     try:
         await insert_audit_log_event(
             {
-                "audit_id": audit_id,
+                "audit_id": join_audit_id,
                 "event_type": "shadow_feedback_submitted",
                 "user_id": user_id,
                 "timestamp": datetime.now(timezone.utc),
                 "payload": {
                     "study_uid": study_uid,
                     "verdict": v,
-                    "model_label": mr.get("label"),
-                    "model_confidence": mr.get("confidence"),
+                    "audit_id": join_audit_id,
+                    "feedback_id": feedback_id,
                 },
             }
         )
     except Exception:
         pass
-    return {"ok": True, "audit_id": audit_id}
+    return {"ok": True, "feedback_id": feedback_id, "audit_id": join_audit_id}
 
 
 async def handle_shadow_assign(*, study_uid: str, rad_id: str, rad_name: str, user_id: str) -> Dict[str, bool]:

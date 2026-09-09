@@ -10,6 +10,15 @@ from typing import Any
 import yaml
 
 from src.inference.audit_log import log_report_draft_event
+from src.inference.qc import LIMITED_EXAM_SENTENCE
+from src.ingest.path import (
+    export_allowed_for,
+    is_2d_triage_run,
+    research_triage_from_run,
+    resolve_ingest_path,
+    triage_suggested_line,
+    wmh_volume_is_trusted,
+)
 from src.llm.client import generate_clinical_prose, get_llm_client
 from src.llm.narrative_schema import (
     RegionNarrative,
@@ -170,7 +179,7 @@ class ReportBuilder:
         mver = str(model_run.get("model_version") or "v1")
         conf = float(model_run.get("confidence") or model_run.get("model_confidence") or 0.0)
 
-        if isinstance(model_run.get("wmh"), dict):
+        if isinstance(model_run.get("wmh"), dict) and wmh_volume_is_trusted(model_run):
             wmh = model_run["wmh"]
             vol = float(wmh.get("volume_cc", 0))
             sev = self._volume_severity(vol)
@@ -229,60 +238,63 @@ class ReportBuilder:
                     }
                 )
 
-        probs = model_run.get("probabilities") or model_run.get("class_probabilities") or {}
-        if isinstance(probs, dict) and probs:
-            top_label = max(probs, key=lambda k: float(probs[k]))
-            top_p = float(probs[top_label])
+        if not is_2d_triage_run(model_run):
+            probs = model_run.get("probabilities") or model_run.get("class_probabilities") or {}
+            if isinstance(probs, dict) and probs:
+                top_label = max(probs, key=lambda k: float(probs[k]))
+                top_p = float(probs[top_label])
+                m.append(
+                    {
+                        "id": "dominant_class_probability",
+                        "label": f"P({top_label})",
+                        "value": round(top_p, 4),
+                        "unit": None,
+                        "severity": "warn" if top_p < 0.75 else "normal",
+                        "audit_ref": aid,
+                        "source": mname,
+                    }
+                )
+                m.append(
+                    {
+                        "id": "predicted_label",
+                        "label": "Leading class",
+                        "value": str(model_run.get("label") or top_label),
+                        "unit": None,
+                        "severity": None,
+                        "audit_ref": aid,
+                        "source": mname,
+                    }
+                )
+
             m.append(
                 {
-                    "id": "dominant_class_probability",
-                    "label": f"P({top_label})",
-                    "value": round(top_p, 4),
-                    "unit": None,
-                    "severity": "warn" if top_p < 0.75 else "normal",
+                    "id": "model_confidence",
+                    "label": "Model confidence",
+                    "value": round(conf * 100.0, 1) if conf <= 1.0 else round(conf, 1),
+                    "unit": "%" if conf <= 1.0 else None,
+                    "severity": "normal" if conf > 0.85 else "warn",
                     "audit_ref": aid,
                     "source": mname,
                 }
             )
+            # For rule evaluation some templates use raw 0–1 confidence
             m.append(
                 {
-                    "id": "predicted_label",
-                    "label": "Leading class",
-                    "value": str(model_run.get("label") or top_label),
+                    "id": "model_confidence_raw",
+                    "label": "Model confidence (0–1)",
+                    "value": round(conf if conf <= 1.0 else conf / 100.0, 4),
                     "unit": None,
                     "severity": None,
                     "audit_ref": aid,
                     "source": mname,
                 }
             )
-
-        m.append(
-            {
-                "id": "model_confidence",
-                "label": "Model confidence",
-                "value": round(conf * 100.0, 1) if conf <= 1.0 else round(conf, 1),
-                "unit": "%" if conf <= 1.0 else None,
-                "severity": "normal" if conf > 0.85 else "warn",
-                "audit_ref": aid,
-                "source": mname,
-            }
-        )
-        # For rule evaluation some templates use raw 0–1 confidence
-        m.append(
-            {
-                "id": "model_confidence_raw",
-                "label": "Model confidence (0–1)",
-                "value": round(conf if conf <= 1.0 else conf / 100.0, 4),
-                "unit": None,
-                "severity": None,
-                "audit_ref": aid,
-                "source": mname,
-            }
-        )
         return m
 
     def _longitudinal_measurements(self, longitudinal: dict[str, Any], audit_id: str) -> list[dict]:
         out: list[dict] = []
+        if str(longitudinal.get("status") or "") != "comparable":
+            return out
         delta = longitudinal.get("volume_delta_cc")
         if delta is not None:
             out.append(
@@ -427,10 +439,10 @@ class ReportBuilder:
             text = text.replace("{{scanner_field_strength}}", str(sf))
         if name == "comparison" and isinstance(case.get("longitudinal"), dict):
             lon = case["longitudinal"]
-            text = str(lon.get("comparison_summary") or text)
-            note = lon.get("note")
-            if note:
-                text = f"{text}\n\n{note}"
+            if str(lon.get("status") or "") == "comparable" and lon.get("comparison_summary"):
+                text = str(lon["comparison_summary"])
+            else:
+                text = "Prior not comparable."
         elif name == "comparison" and extra_hint:
             text = f"{default_text}\n\nPrior studies noted: {extra_hint}."
         return {
@@ -453,6 +465,34 @@ class ReportBuilder:
         severity_bucket: dict[str, Any],
     ) -> dict[str, Any]:
         _ = severity_bucket
+        triage = research_triage_from_run(model_run)
+        mids = set(region.get("measurement_ids") or [])
+        _TRIAGE_MIDS = {
+            "predicted_label",
+            "dominant_class_probability",
+            "model_confidence",
+            "model_confidence_raw",
+        }
+        if triage and (region.get("id") == "mass_region" or mids & _TRIAGE_MIDS):
+            cls = str(triage.get("class") or "unknown")
+            return {
+                "region": region["label"],
+                "text": triage_suggested_line(cls),
+                "measurements": [],
+                "citations": [],
+                "validation": ValidationResult(passed=True, used_fallback=True).to_dict(),
+            }
+        wants_wmh = any(
+            str(mid).startswith("wmh") or str(mid) in {"lesion_voxels", "age_percentile"} for mid in mids
+        )
+        if wants_wmh and not wmh_volume_is_trusted(model_run):
+            return {
+                "region": region["label"],
+                "text": LIMITED_EXAM_SENTENCE,
+                "measurements": [],
+                "citations": [],
+                "validation": ValidationResult(passed=True, used_fallback=True).to_dict(),
+            }
         if not region.get("ai_prompt"):
             return {
                 "region": region["label"],
@@ -484,11 +524,12 @@ Do not name anatomical regions, findings, or severity grades that are not in the
         )
         mids = set(region.get("measurement_ids") or [])
         if mids & {"predicted_label", "dominant_class_probability", "model_confidence", "model_confidence_raw"}:
-            payload["label"] = model_run.get("label") or model_run.get("prediction")
-            payload["confidence"] = model_run.get("confidence")
-            payload["probabilities"] = model_run.get("probabilities") or model_run.get("class_probabilities")
+            if not is_2d_triage_run(model_run):
+                payload["label"] = model_run.get("label") or model_run.get("prediction")
+                payload["confidence"] = model_run.get("confidence")
+                payload["probabilities"] = model_run.get("probabilities") or model_run.get("class_probabilities")
         if any(str(mid).startswith("wmh") or str(mid) in {"lesion_voxels", "age_percentile"} for mid in mids):
-            if isinstance(model_run.get("wmh"), dict):
+            if wmh_volume_is_trusted(model_run):
                 payload["wmh"] = model_run["wmh"]
 
         raw, gmeta = self._llm_region_narrative(prompt, payload, region, relevant)
@@ -549,6 +590,33 @@ Do not name anatomical regions, findings, or severity grades that are not in the
         case: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         impressions: list[dict[str, Any]] = []
+        triage = research_triage_from_run(model_run)
+        if triage and "wmh_volume_cc" not in _measures_dict(measurements):
+            cls = str(triage.get("class") or "unknown")
+            return [
+                {
+                    "order": 1,
+                    "text": triage_suggested_line(cls),
+                    "measurements": [],
+                    "citations": [],
+                }
+            ]
+        if not wmh_volume_is_trusted(model_run) and "wmh_volume_cc" not in _measures_dict(measurements):
+            qc = model_run.get("qc") if isinstance(model_run.get("qc"), dict) else {}
+            if isinstance(case, dict) and isinstance(case.get("qc"), dict):
+                qc = case["qc"]
+            overall = str(qc.get("overall") or "")
+            wmh = model_run.get("wmh") if isinstance(model_run.get("wmh"), dict) else {}
+            omitted = str(wmh.get("status") or "").lower() in {"omitted", "unreliable"} or overall == "fail"
+            if omitted or (qc.get("engines") or {}).get("wmh_3d", {}).get("run") is False:
+                return [
+                    {
+                        "order": 1,
+                        "text": LIMITED_EXAM_SENTENCE,
+                        "measurements": [],
+                        "citations": [],
+                    }
+                ]
         tpl = severity_bucket.get("template") or ""
         meas_ext = list(measurements)
         for fk, fv in severity_bucket.items():
@@ -589,7 +657,7 @@ Do not name anatomical regions, findings, or severity grades that are not in the
             }
         )
         lon = (case or {}).get("longitudinal") if isinstance(case, dict) else None
-        if isinstance(lon, dict) and lon.get("volume_delta_cc") is not None:
+        if isinstance(lon, dict) and lon.get("status") == "comparable" and lon.get("volume_delta_cc") is not None:
             delta = float(lon["volume_delta_cc"])
             pct = lon.get("volume_pct_change")
             direction = str(lon.get("direction") or "stable")
@@ -804,7 +872,8 @@ Do not name anatomical regions, findings, or severity grades that are not in the
         study_uid = str(case.get("study_uid") or case.get("case_id") or "")
         now = _utc_iso()
         conf_raw = float(model_run.get("confidence") or 0.0)
-        return {
+        triage = research_triage_from_run(model_run)
+        out: dict[str, Any] = {
             "report_id": report_id,
             "case_id": study_uid,
             "study_uid": study_uid,
@@ -842,9 +911,15 @@ Do not name anatomical regions, findings, or severity grades that are not in the
                 "prior_studies": case.get("prior_studies"),
                 "scanner_field_strength": case.get("scanner_field_strength") or "3T",
                 "longitudinal": case.get("longitudinal"),
+                "qc": case.get("qc") or model_run.get("qc"),
             },
             "model_run_snapshot": dict(model_run),
         }
+        if triage:
+            out["research"] = {"triage": triage}
+        out["ingest_path"] = resolve_ingest_path(model_run)
+        out["export_allowed"] = export_allowed_for(out)
+        return out
 
     def regenerate_section(
         self,

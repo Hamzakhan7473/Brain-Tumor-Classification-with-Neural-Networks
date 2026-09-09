@@ -145,8 +145,8 @@ export default function ShadowQueue() {
             Shadow queue <span className="sq-phase">Phase B</span>
           </div>
           <p className="sq-sub">
-            Review AI output against PACS-linked studies. Capture structured agreement for IRB / QMS evidence. Nothing
-            here is prospective or patient-facing.
+            Review AI output against PACS-linked studies. Capture structured agreement for QA metrics. Clicks are not
+            training data. Nothing here is prospective or patient-facing.
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { DEFAULT_ATTESTATION_TEXT, canFinalize } from "./provenance.mjs";
+import { attestationTextFor, canFinalize } from "./provenance.mjs";
 
 type AttestationGateProps = {
   attested: boolean;
   attestedBy?: string | null;
   attestedAt?: string | null;
+  auditId?: string | null;
   disabled?: boolean;
   busy?: boolean;
   error?: string | null;
@@ -19,11 +20,13 @@ export function AttestationGate({
   attested,
   attestedBy,
   attestedAt,
+  auditId,
   disabled,
   busy,
   error,
   onSubmit,
 }: AttestationGateProps): React.ReactElement {
+  const statement = attestationTextFor(auditId);
   const [checked, setChecked] = useState(false);
   const [name, setName] = useState("");
 
@@ -55,7 +58,7 @@ export function AttestationGate({
           disabled={disabled || busy}
           onChange={(e) => setChecked(e.target.checked)}
         />
-        <span>{DEFAULT_ATTESTATION_TEXT}</span>
+        <span>{statement}</span>
       </label>
       <label style={{ display: "block", marginTop: 10 }}>
         <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Attested by</div>
@@ -74,7 +77,7 @@ export function AttestationGate({
         className="attestation-gate-submit"
         data-testid="attestation-submit"
         disabled={!canSubmit}
-        onClick={() => void onSubmit(name.trim(), DEFAULT_ATTESTATION_TEXT)}
+        onClick={() => void onSubmit(name.trim(), statement)}
       >
         {busy ? "Submitting…" : "Submit attestation"}
       </button>
@@ -82,4 +85,4 @@ export function AttestationGate({
   );
 }
 
-export { canFinalize, DEFAULT_ATTESTATION_TEXT };
+export { canFinalize, attestationTextFor };

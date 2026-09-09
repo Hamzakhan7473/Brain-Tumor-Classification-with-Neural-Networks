@@ -20,6 +20,7 @@ import numpy as np
 from src.inference.distribution_shift import detect_distribution_shift
 from src.inference.inference_exceptions import ClinicalContextRequired, InputValidationFailed
 from src.inference.input_validator import validate_for_model
+from src.inference.qc import build_qc
 from src.inference.model_registry import MODEL_DEFS, predict_with_uncertainty, registry, segmentation_model_keys
 from src.inference.percentile_wm import volume_percentile_for_age
 from src.inference.preprocessing import load_wmh_nifti_dual_channel
@@ -99,7 +100,12 @@ def run_predict_3d(
 
     vr = validate_for_model(file_bytes, filename, model_name)
     if not vr.accepted:
-        raise InputValidationFailed(_validation_http_detail(vr))
+        detail = _validation_http_detail(vr)
+        detail["qc"] = build_qc(
+            model_name=model_name, filename=filename, vr=vr, ran_inference=False
+        )
+        detail["trusted"] = False
+        raise InputValidationFailed(detail)
 
     model = registry.get_model(model_name)
     if model is None:
@@ -209,6 +215,7 @@ def run_predict_3d(
     }
 
     elapsed = round(time.perf_counter() - t0, 3)
+    qc = build_qc(model_name=model_name, filename=filename, vr=vr, ran_inference=True)
 
     return {
         "prediction": "wmh_segmentation",
@@ -228,7 +235,11 @@ def run_predict_3d(
             "metadata": vr.metadata or {},
             "distribution_z_score": round(float(ood_pack.get("distribution_z_score") or 0), 3),
             "distribution_is_ood": bool(ood_pack.get("is_ood")),
+            "trusted": True,
+            "qc": qc,
         },
+        "qc": qc,
+        "trusted": True,
         "uncertainty": {
             "method": "mc_dropout",
             "n_samples": int(uq["n_samples"]),

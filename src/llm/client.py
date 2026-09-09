@@ -104,16 +104,32 @@ def generate_clinical_prose(
     guardrail is configured. Always returns (text, grounding_meta); meta is empty
     when Guardrails are unset so local dev keeps working.
 
-    ``visual_overlay`` may be a Grad-CAM / saliency PNG. Raw diagnostic scan
-    bytes must never be passed (FDA Non-Device CDS Criterion 1).
+    Clinical paths never attach image bytes. ``visual_overlay`` may be
+    heatmap metadata ``{present, bbox_ids}`` only — PNG / tensors are dropped.
     """
     from src.llm.bedrock import BedrockClient, serialize_grounding_source
-    from src.llm.cds_constraint import CDS_NARRATION_PREAMBLE, MODEL_OVERLAY_CAPTION
+    from src.llm.cds_constraint import CDS_NARRATION_PREAMBLE
+    from src.llm.pixel_leak import (
+        PayloadRejected,
+        REJECT_PIXEL_LEAK,
+        heatmap_metadata_only,
+        prompt_has_pixel_leak,
+        validate_payload,
+    )
+
+    validate_payload(grounding_payload or {})
+    overlay_meta = heatmap_metadata_only(visual_overlay)
+    visual_overlay = None
 
     if CDS_NARRATION_PREAMBLE not in (prompt or ""):
         prompt = f"{CDS_NARRATION_PREAMBLE}\n\n{prompt}"
-    if visual_overlay is not None and MODEL_OVERLAY_CAPTION not in (prompt or ""):
-        prompt = f"{MODEL_OVERLAY_CAPTION}\n\n{prompt}"
+    if overlay_meta is not None:
+        prompt = (
+            f"{prompt}\n\nHeatmap metadata only (no image attached): "
+            f"present={overlay_meta['present']} bbox_ids={overlay_meta['bbox_ids']}."
+        )
+    if prompt_has_pixel_leak(prompt):
+        raise PayloadRejected(REJECT_PIXEL_LEAK, "prompt")
 
     meta: dict = {}
     try:
@@ -131,7 +147,7 @@ def generate_clinical_prose(
                 grounding_source=source,
                 prompt=prompt,
                 generation_config=gen_cfg,
-                image=visual_overlay,
+                image=None,
             )
             return (grounded.text or "").strip(), grounded.to_meta()
         except ValueError:
@@ -141,9 +157,7 @@ def generate_clinical_prose(
             pass
 
     try:
-        if visual_overlay is not None:
-            text = generate_with_image(client, visual_overlay, prompt, **gen_cfg) or ""
-        elif hasattr(client, "generate_content"):
+        if hasattr(client, "generate_content"):
             resp = client.generate_content(prompt, generation_config=gen_cfg)
             text = (getattr(resp, "text", None) or "").strip()
         else:

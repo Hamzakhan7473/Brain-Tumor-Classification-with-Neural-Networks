@@ -58,10 +58,10 @@ def test_invented_number_still_fails():
     text = "WMH volume 99.5 cc detected"
     numbers = validate_no_invented_numbers(text, payload)
     assert numbers.passed is False
-    assert "99.5" in numbers.invented_numbers
+    assert any("99.5" in n for n in numbers.invented_numbers)
     combined = validate_clinical_output(text, payload)
     assert combined.passed is False
-    assert "99.5" in combined.invented_numbers
+    assert any("99.5" in n for n in combined.invented_numbers)
 
 
 def test_wmh_recall_requires_mention():
@@ -103,10 +103,13 @@ def test_gate_falls_back_and_does_not_ship_unvalidated_text():
         retry_fn=retry,
     )
     assert calls["n"] == 1
-    assert text == fallback
+    assert "FAIL_CLOSED" in text
+    assert "12 cc" not in text
+    assert "abscess" not in text.lower()
     assert result.used_fallback is True
     assert result.regenerated is True
     assert result.passed is False
+    assert "FAIL_CLOSED" in result.rejection_codes
 
 
 def test_combine_aggregates_violation_types():
@@ -133,3 +136,37 @@ def test_independent_visual_language_fails_gate():
         {"measurements": [{"id": "wmh_volume_cc", "value": 10.9}]},
     )
     assert ok.passed is True
+
+
+def test_pixel_leak_in_payload_fails_closed():
+    from src.llm.pixel_leak import PayloadRejected, validate_payload
+    from src.llm.validation import validate_draft
+
+    leaked = {"measurements": [{"id": "wmh_volume_cc", "value": 10.9}], "image_bytes": b"\x00\x01"}
+    try:
+        validate_payload(leaked)
+        raised = False
+    except PayloadRejected as exc:
+        raised = True
+        assert exc.code == "REJECT_PIXEL_LEAK"
+    assert raised is True
+    gate = validate_draft("WMH volume 10.9 cc.", leaked)
+    assert gate.passed is False
+    assert any("REJECT_PIXEL_LEAK" in c for c in gate.independent_visual_claims)
+
+
+def test_heatmap_metadata_is_not_a_pixel_leak():
+    from src.llm.pixel_leak import heatmap_metadata_only, validate_payload
+
+    assert heatmap_metadata_only(b"\x89PNG") is None
+    ok = {"heatmap": {"present": True, "bbox_ids": ["box-1"]}}
+    assert validate_payload(ok) is ok
+
+
+def test_slight_increase_without_comparable_delta_is_rejected():
+    from src.llm.validation import validate_comparison_language
+
+    payload = {"wmh": {"volume_cc": 10.9}, "longitudinal": {"status": "incomparable"}}
+    result = validate_comparison_language("There is a slight increase in WMH.", payload)
+    assert result.passed is False
+    assert "REJECT_COMPARISON_LANGUAGE" in result.contradicted_claims

@@ -7,9 +7,11 @@ from fastapi import HTTPException
 
 from src.api.attestation import (
     DEFAULT_ATTESTATION_TEXT,
+    attestation_text_for,
     attestation_text_is_valid,
     report_is_attested,
     require_attested,
+    require_signed,
 )
 from src.llm.content_provenance import build_content_provenance, generated_by_slug
 from src.llm.validation import ValidationResult
@@ -37,10 +39,14 @@ def test_provenance_status_from_gate():
 
 
 def test_attestation_text_must_match():
-    assert attestation_text_is_valid(DEFAULT_ATTESTATION_TEXT)
-    assert attestation_text_is_valid("  " + DEFAULT_ATTESTATION_TEXT + "  ")
+    assert attestation_text_is_valid(DEFAULT_ATTESTATION_TEXT, "unbound")
+    assert attestation_text_is_valid("  " + DEFAULT_ATTESTATION_TEXT + "  ", "unbound")
+    bound = attestation_text_for("abcd1234efgh5678")
+    assert attestation_text_is_valid(bound, "abcd1234efgh5678")
+    assert "abcd1234efgh5678" in bound
     assert not attestation_text_is_valid("")
     assert not attestation_text_is_valid("looks good to me")
+    assert not attestation_text_is_valid(DEFAULT_ATTESTATION_TEXT, "abcd1234efgh5678")
 
 
 def test_require_attested_blocks_unattested():
@@ -67,3 +73,8 @@ def test_attestation_does_not_replace_clinical_gate():
     }
     require_attested(attested_doc)
     assert gate.passed is False or gate.used_fallback is True
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as ei:
+        require_signed(attested_doc)
+    assert ei.value.status_code == 403

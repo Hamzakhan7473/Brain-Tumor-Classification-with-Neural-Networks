@@ -6,6 +6,7 @@ import { AttestationGate } from "../components/ui/AttestationGate";
 import { IosButton, IosLinkButton } from "../components/ui/IosButton";
 import { ProviderBadge } from "../components/ui/ProviderBadge";
 import { useFeatures } from "../hooks/useFeatures";
+import { TRIAGE_BANNER } from "../lib/triageCopy";
 
 type StoredPrediction = {
   scanBase64: string;
@@ -104,14 +105,6 @@ export default function GenerateReport() {
         "Standardized template for brain MRI reports including sections for indication, technique, findings, and impression. The AI draft should follow this structure.",
       score: 0.9,
     },
-    {
-      id: "rag-guideline-1",
-      title: "Glioma imaging guideline",
-      source: "guidelines / glioma-imaging",
-      snippet:
-        "In suspected glioma, MRI with and without contrast is recommended to evaluate tumor extent, edema, and mass effect. Reporting should describe size, location, and involvement of eloquent cortex.",
-      score: 0.87,
-    },
   ];
 
   return (
@@ -125,9 +118,14 @@ export default function GenerateReport() {
           <div className="card">
             <div className="app-card-title">Structured context</div>
             <div className="app-text-muted" style={{ marginTop: 10, fontSize: 13 }}>
+              <div style={{ marginBottom: 8 }}>{TRIAGE_BANNER}</div>
               <div><b>Study UID:</b> {stored.study_instance_uid}</div>
               <div><b>Site ID:</b> {stored.site_id || "—"}</div>
               <div><b>Model:</b> {stored.model}</div>
+              <div>
+                <b>Suggested class (research):</b> {stored.prediction.label}{" "}
+                ({(stored.prediction.confidence * 100).toFixed(1)}%)
+              </div>
             </div>
             <div style={{ marginTop: 12 }}>
               <IosLinkButton to={`/reading/${encodeURIComponent(stored.study_instance_uid)}`} variant="ghost">

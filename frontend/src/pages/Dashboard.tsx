@@ -4,6 +4,7 @@ import { CaseSummary, formatApiConnectionHint, getMetrics, listCases, MetricsRes
 import { DashboardInsights, type DashboardInsight } from "../components/ui/DashboardInsights";
 import { DashboardTableSkeleton } from "../components/ui/DashboardSkeleton";
 import { IosLinkButton } from "../components/ui/IosButton";
+import { TRIAGE_BANNER } from "../lib/triageCopy";
 import "./Dashboard.css";
 
 type StoredPrediction = {
@@ -95,7 +96,7 @@ export default function Dashboard() {
       list.push({
         id: "resume-case",
         title: "Resume last session",
-        description: `${stored.filename || "Scan"} · ${stored.prediction?.label || "—"}`,
+        description: `${stored.filename || "Scan"} · ${TRIAGE_BANNER}. Suggested class (research): ${stored.prediction?.label || "—"}`,
         to: `/cases/${encodeURIComponent(stored.study_instance_uid)}`,
         cta: "Open case",
       });
@@ -124,7 +125,7 @@ export default function Dashboard() {
       list.push({
         id: "corrections",
         title: `${correctedCount} corrected / unclear`,
-        description: "Review disagreement patterns for model improvement and QMS evidence.",
+        description: "Review disagreement patterns persisted for QA metrics.",
         to: "/shadow-queue",
         cta: "Shadow queue",
         tone: "muted",

@@ -20,6 +20,7 @@ import { IosSymbol } from "../components/ui/IosSymbol";
 import { useScanSimulation, type ScanStartOptions } from "../hooks/useScanSimulation";
 import type { ClinicalContextPayload } from "../types/scan";
 import { predictApiDisplayBase } from "../lib/api";
+import { TRIAGE_BANNER } from "../lib/triageCopy";
 import "./UploadPredict.css";
 
 type ConfidenceBarsProps = {
@@ -30,7 +31,7 @@ type ConfidenceBarsProps = {
 function ConfidenceBars({ result, classes }: ConfidenceBarsProps) {
   return (
     <div className="upload-confidence">
-      <div className="upload-confidence__heading">Confidence bars</div>
+      <div className="upload-confidence__heading">Triage class probabilities (research)</div>
       <div>
         {classes.map((c) => {
           const v = result.probabilities?.[c] ?? 0;
@@ -450,8 +451,11 @@ export default function UploadPredict() {
             </div>
           ) : (
             <>
+              <div className="text-ios-caption2 font-ios text-ns-muted" style={{ marginBottom: 8 }}>
+                {TRIAGE_BANNER}
+              </div>
               <div className="upload-result__label">
-                {shownResult.label}{" "}
+                Suggested class (research): {shownResult.label}{" "}
                 <span className="upload-result__confidence">({(shownResult.confidence * 100).toFixed(1)}%)</span>
               </div>
 

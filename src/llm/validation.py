@@ -195,6 +195,7 @@ class ValidationResult:
     contradicted_claims: list[str] = field(default_factory=list)
     unaddressed_claims: list[str] = field(default_factory=list)
     independent_visual_claims: list[str] = field(default_factory=list)
+    rejection_codes: list[str] = field(default_factory=list)
     used_fallback: bool = False
     regenerated: bool = False
     contextual_grounding: Optional[dict] = None
@@ -220,6 +221,8 @@ class ValidationResult:
                     "tier": "cds1",
                 }
             )
+        for code in self.rejection_codes:
+            out.append({"type": code, "value": code, "severity": "high"})
         return out
 
     def to_dict(self) -> dict[str, Any]:
@@ -231,6 +234,7 @@ class ValidationResult:
             "contradicted_claims": list(self.contradicted_claims),
             "unaddressed_claims": list(self.unaddressed_claims),
             "independent_visual_claims": list(self.independent_visual_claims),
+            "rejection_codes": list(self.rejection_codes),
             "used_fallback": self.used_fallback,
             "regenerated": self.regenerated,
             "violations": self.violations,
@@ -253,6 +257,8 @@ class ValidationResult:
             parts.append(f"contradicted_claims={self.contradicted_claims}")
         if self.independent_visual_claims:
             parts.append(f"independent_visual_claims={self.independent_visual_claims}")
+        if self.rejection_codes:
+            parts.append(f"rejection_codes={self.rejection_codes}")
         return "; ".join(parts) if parts else "passed"
 
     @classmethod
@@ -263,6 +269,7 @@ class ValidationResult:
         contradicted: list[str] = []
         unaddressed: list[str] = []
         visual: list[str] = []
+        codes: list[str] = []
         for r in results:
             invented_numbers.extend(r.invented_numbers)
             invented_entities.extend(r.invented_entities)
@@ -270,6 +277,7 @@ class ValidationResult:
             contradicted.extend(r.contradicted_claims)
             unaddressed.extend(r.unaddressed_claims)
             visual.extend(r.independent_visual_claims)
+            codes.extend(r.rejection_codes)
 
         def _uniq(xs: list[str]) -> list[str]:
             seen: set[str] = set()
@@ -286,14 +294,16 @@ class ValidationResult:
         contradicted = _uniq(contradicted)
         unaddressed = _uniq(unaddressed)
         visual = _uniq(visual)
+        codes = _uniq(codes)
         return cls(
-            passed=not (invented_numbers or invented_entities or omitted or contradicted or visual),
+            passed=not (invented_numbers or invented_entities or omitted or contradicted or visual or codes),
             invented_numbers=invented_numbers,
             invented_entities=invented_entities,
             omitted_findings=omitted,
             contradicted_claims=contradicted,
             unaddressed_claims=unaddressed,
             independent_visual_claims=visual,
+            rejection_codes=codes,
             used_fallback=any(r.used_fallback for r in results),
             regenerated=any(r.regenerated for r in results),
         )
@@ -310,77 +320,235 @@ def _phrase_in(blob: str, phrase: str) -> bool:
     return re.search(pat, blob) is not None
 
 
-def _walk_numbers(obj: Any, into: set[str]) -> None:
-    if obj is None or isinstance(obj, bool):
-        return
-    if isinstance(obj, (int, float)):
-        fv = float(obj)
-        into.add(str(obj))
-        into.add(str(fv))
-        if fv == int(fv):
-            into.add(str(int(fv)))
-        into.add(f"{fv:.1f}".rstrip("0").rstrip("."))
-        into.add(f"{fv:.2f}".rstrip("0").rstrip("."))
-        into.add(f"{fv:.4f}".rstrip("0").rstrip("."))
-        if 0.0 <= fv <= 1.0:
-            pct = fv * 100.0
-            into.add(f"{pct:.1f}".rstrip("0").rstrip("."))
-            into.add(str(int(round(pct))))
-        return
-    if isinstance(obj, str):
-        for n in re.findall(r"\b\d+\.?\d*\b", obj):
-            into.add(n)
-            try:
-                _walk_numbers(float(n), into)
-            except ValueError:
-                pass
-        return
-    if isinstance(obj, dict):
-        for v in obj.values():
-            _walk_numbers(v, into)
-        return
-    if isinstance(obj, (list, tuple, set)):
-        for v in obj:
-            _walk_numbers(v, into)
+_SAFE_TESLA = frozenset({1.5, 3.0})
+_UNTRUSTED_STATUSES = frozenset({"omitted", "unreliable"})
+
+_NUM_UNIT_RE = re.compile(
+    r"(?P<num>\d+(?:\.\d+)?)\s*(?P<unit>cc|cm3|cm³|ml|mm|%|days?|tesla|T\b)",
+    re.IGNORECASE,
+)
+_FAZEKAS_NUM_RE = re.compile(r"fazekas(?:\s+grade)?\s*(?P<num>\d+(?:\.\d+)?)", re.IGNORECASE)
+_COMPARE_NUM_RE = re.compile(
+    r"(?:increased|decreased|delta|Δ|change(?:d)?)\s+(?:by\s+)?(?P<num>\d+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
 
 
-def _allowed_numbers(payload: dict) -> set[str]:
-    allowed: set[str] = set()
-    _walk_numbers(payload, allowed)
-    return {a for a in allowed if a not in {"", ".", "-"}}
+def _canonical_unit(unit: str) -> str:
+    u = (unit or "").strip().lower().replace("³", "3")
+    if u in {"cc", "cm3", "ml"}:
+        return "cc"
+    if u == "mm":
+        return "mm"
+    if u in {"%", "percent", "pct"}:
+        return "%"
+    if u == "fazekas":
+        return "fazekas"
+    if u in {"day", "days"}:
+        return "days"
+    if u in {"t", "tesla"}:
+        return "T"
+    return u
+
+
+def _unit_from_id(mid: str) -> str:
+    key = (mid or "").lower()
+    if key.endswith("_cc") or "volume_cc" in key or key.endswith(".cc"):
+        return "cc"
+    if "pct" in key or "percent" in key:
+        return "%"
+    if "fazekas" in key:
+        return "fazekas"
+    if "days" in key:
+        return "days"
+    return ""
+
+
+def _float_or_none(raw: Any) -> Optional[float]:
+    if isinstance(raw, bool) or raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _add_measure(bucket: list[dict[str, Any]], value: Any, unit: str, *, trusted: bool, label: str = "") -> None:
+    fv = _float_or_none(value)
+    if fv is None:
+        return
+    cu = _canonical_unit(unit)
+    bucket.append({"value": fv, "unit": cu, "trusted": trusted, "label": label or cu})
+
+
+def _collect_payload_measures(payload: dict) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    if not isinstance(payload, dict):
+        return out
+
+    for fnd in payload.get("findings") or []:
+        if not isinstance(fnd, dict):
+            continue
+        status = str(fnd.get("status") or "ok").lower()
+        unit = str(fnd.get("unit") or _unit_from_id(str(fnd.get("code") or fnd.get("id") or "")))
+        _add_measure(out, fnd.get("value"), unit, trusted=status not in _UNTRUSTED_STATUSES, label=str(fnd.get("code") or fnd.get("id") or ""))
+
+    for m in payload.get("measurements") or []:
+        if not isinstance(m, dict):
+            continue
+        status = str(m.get("status") or "ok").lower()
+        unit = str(m.get("unit") or _unit_from_id(str(m.get("id") or "")))
+        _add_measure(out, m.get("value"), unit, trusted=status not in _UNTRUSTED_STATUSES, label=str(m.get("id") or m.get("label") or ""))
+
+    wmh = payload.get("wmh") if isinstance(payload.get("wmh"), dict) else {}
+    qc = payload.get("qc") if isinstance(payload.get("qc"), dict) else {}
+    engines = qc.get("engines") if isinstance(qc.get("engines"), dict) else {}
+    wmh_eng = engines.get("wmh_3d") if isinstance(engines.get("wmh_3d"), dict) else {}
+    wmh_status = str(wmh.get("status") or "ok").lower()
+    wmh_trusted = wmh_status not in _UNTRUSTED_STATUSES
+    if engines:
+        if wmh_eng.get("run") is False or wmh_eng.get("trusted") is False:
+            wmh_trusted = False
+        if str(qc.get("overall") or "") == "fail" and not wmh_eng.get("run"):
+            wmh_trusted = False
+    for key, lab in (
+        ("volume_cc", "wmh_total_cc"),
+        ("volume_cc_periventricular", "wmh_pv_cc"),
+        ("volume_cc_deep_subcortical", "wmh_deep_cc"),
+        ("volume_cc_infratentorial", "wmh_infra_cc"),
+    ):
+        if wmh.get(key) is not None:
+            _add_measure(out, wmh.get(key), "cc", trusted=wmh_trusted, label=lab)
+
+    et = payload.get("ET_VOL")
+    if et is None and isinstance(payload.get("tumor"), dict):
+        et = payload["tumor"].get("et_cc") or payload["tumor"].get("ET_VOL")
+    et_trusted = True
+    if engines and (wmh_eng.get("run") is False or str(qc.get("overall") or "") == "fail"):
+        et_trusted = False
+    _add_measure(out, et, "cc", trusted=et_trusted, label="ET_VOL")
+
+    conf = _payload_confidence(payload)
+    if conf:
+        _add_measure(out, conf * 100.0, "%", trusted=True, label="confidence")
+
+    comps: list[Any] = []
+    if isinstance(payload.get("comparisons"), list):
+        comps.extend(payload["comparisons"])
+    elif isinstance(payload.get("comparisons"), dict):
+        comps.append(payload["comparisons"])
+    if isinstance(payload.get("longitudinal"), dict):
+        comps.append(payload["longitudinal"])
+    for row in comps:
+        if not isinstance(row, dict):
+            continue
+        status = str(row.get("status") or "")
+        _add_measure(out, row.get("current_volume_cc") or row.get("current_cc"), "cc", trusted=True, label="current_cc")
+        _add_measure(out, row.get("prior_volume_cc") or row.get("prior_cc"), "cc", trusted=True, label="prior_cc")
+        if status == "comparable":
+            _add_measure(out, row.get("volume_delta_cc") or row.get("delta_cc"), "cc", trusted=True, label="delta_cc")
+            _add_measure(out, row.get("volume_pct_change") or row.get("pct_change"), "%", trusted=True, label="pct_change")
+
+    days = payload.get("days_between")
+    if days is None:
+        for row in comps:
+            if isinstance(row, dict) and row.get("days_between") is not None:
+                days = row.get("days_between")
+                break
+    _add_measure(out, days, "days", trusted=True, label="days_between")
+
+    tesla = None
+    qc = payload.get("qc") if isinstance(payload.get("qc"), dict) else {}
+    tesla = qc.get("tesla") or qc.get("field_strength") or payload.get("scanner_field_strength")
+    if isinstance(tesla, str) and tesla.lower().endswith("t"):
+        tesla = tesla[:-1]
+    tv = _float_or_none(tesla)
+    if tv is not None:
+        _add_measure(out, tv, "T", trusted=True, label="tesla")
+    return out
+
+
+def _iter_measurement_mentions(text: str) -> list[tuple[float, str, str]]:
+    """Return (value, canonical_unit, raw) for unit-bearing or comparison numbers only."""
+    hits: list[tuple[float, str, str]] = []
+    for m in _NUM_UNIT_RE.finditer(text or ""):
+        fv = _float_or_none(m.group("num"))
+        if fv is None:
+            continue
+        hits.append((fv, _canonical_unit(m.group("unit")), m.group(0).strip()))
+    for m in _FAZEKAS_NUM_RE.finditer(text or ""):
+        fv = _float_or_none(m.group("num"))
+        if fv is None:
+            continue
+        hits.append((fv, "fazekas", m.group(0).strip()))
+    for m in _COMPARE_NUM_RE.finditer(text or ""):
+        fv = _float_or_none(m.group("num"))
+        if fv is None:
+            continue
+        if not any(abs(h[0] - fv) < 1e-6 for h in hits):
+            hits.append((fv, "", m.group(0).strip()))
+    return hits
+
+
+def _value_matches(fv: float, allowed: float) -> bool:
+    return abs(fv - allowed) < 1e-6
 
 
 def validate_no_invented_numbers(generated_text: str, grounding_payload: dict) -> ValidationResult:
-    """Existing number gate, payload-shaped so other checks can share it."""
+    """Flag a number only when it appears with a measurement unit/noun or comparison phrase."""
     text = generated_text or ""
     if not text.strip():
         return ValidationResult(passed=True)
-    allowed = _allowed_numbers(grounding_payload or {})
+    measures = _collect_payload_measures(grounding_payload or {})
     invented: list[str] = []
-    for n in re.findall(r"\b\d+\.?\d*\b", text):
-        if n in allowed:
+    codes: list[str] = []
+    for fv, unit, raw in _iter_measurement_mentions(text):
+        if unit == "T" and fv in _SAFE_TESLA:
             continue
-        try:
-            fn = float(n)
-        except ValueError:
+        trusted_same = [m for m in measures if m["trusted"] and _value_matches(fv, m["value"])]
+        untrusted_same = [m for m in measures if (not m["trusted"]) and _value_matches(fv, m["value"])]
+        if unit == "T" and any(m["unit"] == "T" and _value_matches(fv, m["value"]) for m in measures):
             continue
-        ok = False
-        for a in allowed:
-            try:
-                if abs(float(a) - fn) < 1e-6:
-                    ok = True
-                    break
-            except ValueError:
-                continue
-        if not ok:
-            invented.append(n)
+        if not trusted_same and untrusted_same:
+            invented.append(raw)
+            codes.append("REJECT_OMITTED_NUMBER_USED")
+            continue
+        if not trusted_same:
+            invented.append(raw)
+            codes.append("REJECT_INVENTED_NUMBER")
+            continue
+        if unit and not any(m["unit"] == unit for m in trusted_same):
+            invented.append(raw)
+            codes.append("REJECT_UNIT_MISMATCH")
+            continue
     seen: set[str] = set()
     uniq: list[str] = []
-    for n in invented:
+    ucodes: list[str] = []
+    for n, c in zip(invented, codes):
         if n not in seen:
             seen.add(n)
             uniq.append(n)
-    return ValidationResult(passed=not uniq, invented_numbers=uniq)
+            ucodes.append(c)
+    return ValidationResult(passed=not uniq, invented_numbers=uniq, rejection_codes=ucodes)
+
+
+def fail_closed_template(payload: dict) -> str:
+    """Measurement table from trusted payload values only. Never splice rejected prose."""
+    lines = ["FAIL_CLOSED", "Measurement table (source payload only):"]
+    seen: set[tuple[str, float, str]] = set()
+    for m in _collect_payload_measures(payload or {}):
+        if not m["trusted"]:
+            continue
+        key = (m["label"], m["value"], m["unit"])
+        if key in seen:
+            continue
+        seen.add(key)
+        unit = f" {m['unit']}" if m["unit"] else ""
+        lines.append(f"- {m['label']}: {m['value']}{unit}".rstrip())
+    label = _payload_label(payload or {})
+    if label:
+        lines.append(f"- prediction: {label}")
+    return "\n".join(lines)
 
 
 def _payload_label(payload: dict) -> str:
@@ -590,6 +758,26 @@ def _material_findings(
             )
         )
 
+    et = _float_or_none(payload.get("ET_VOL"))
+    if et is None and isinstance(payload.get("tumor"), dict):
+        et = _float_or_none(payload["tumor"].get("et_cc") or payload["tumor"].get("ET_VOL"))
+    if et is None:
+        for fnd in payload.get("findings") or []:
+            if not isinstance(fnd, dict):
+                continue
+            code = str(fnd.get("code") or fnd.get("id") or "").lower()
+            if ("et" in code and "vol" in code) or code.endswith(".et_cc") or code == "et_vol":
+                et = _float_or_none(fnd.get("value"))
+                if et is not None:
+                    break
+    if et is not None and et > 0:
+        findings.append(
+            (
+                f"ET_VOL={et}",
+                ("enhancing tumor", "enhancing", "contrast-enhancing"),
+            )
+        )
+
     regional = (
         ("volume_cc_periventricular", "periventricular", th["regional_volume_cc"]),
         ("volume_cc_deep_subcortical", "deep subcortical", th["regional_volume_cc"]),
@@ -647,6 +835,7 @@ _VISUAL_INTERPRETATION_RE = re.compile(
     r"\bi see\b|"
     r"\bthe image shows\b|"
     r"\bthe scan shows\b|"
+    r"\bon the image\b|"
     r"\bthe mri shows\b|"
     r"\bvisually appears(?:\s+to)?\b|"
     r"\bupon inspection of the (?:scan|image|mri)\b|"
@@ -714,7 +903,90 @@ def validate_no_independent_image_interpretation(
                 "payload_keys": sorted(str(k) for k in (grounding_payload or {})),
             },
         )
-    return ValidationResult(passed=not flagged, independent_visual_claims=flagged)
+    return ValidationResult(
+        passed=not flagged,
+        independent_visual_claims=flagged,
+        rejection_codes=["REJECT_INDEPENDENT_VISUAL"] if flagged else [],
+    )
+
+
+_CHANGE_LANGUAGE_RE = re.compile(
+    r"\b(increased|decreased|stable|slight[ -]increase|slight[ -]decrease|"
+    r"interval change|unchanged)\b",
+    re.IGNORECASE,
+)
+
+
+def validate_comparison_language(generated_text: str, grounding_payload: dict) -> ValidationResult:
+    """Change adjectives are allowed only when a comparable direction is in the payload."""
+    text = generated_text or ""
+    if not text.strip() or not _CHANGE_LANGUAGE_RE.search(text):
+        return ValidationResult(passed=True)
+    lon = None
+    if isinstance(grounding_payload, dict):
+        lon = grounding_payload.get("longitudinal")
+        if lon is None:
+            comps = grounding_payload.get("comparisons")
+            if isinstance(comps, list) and comps:
+                lon = comps[0]
+            elif isinstance(comps, dict):
+                lon = comps
+    direction = ""
+    status = ""
+    if isinstance(lon, dict):
+        status = str(lon.get("status") or "")
+        direction = str(lon.get("direction") or "").lower()
+    has_delta = False
+    if isinstance(lon, dict):
+        has_delta = lon.get("volume_delta_cc") is not None or lon.get("delta_cc") is not None
+    if status != "comparable" or not (direction or has_delta):
+        return ValidationResult(
+            passed=False,
+            contradicted_claims=["REJECT_COMPARISON_LANGUAGE"],
+            rejection_codes=["REJECT_COMPARISON_LANGUAGE"],
+        )
+    return ValidationResult(passed=True)
+
+
+_ATTEST_FORGE_RE = re.compile(
+    r"("
+    r"\bi (?:have )?reviewed these statements\b|"
+    r"\bi hereby (?:attest|sign)\b|"
+    r"\belectronically signed\b|"
+    r"\battested by\b|"
+    r"\bi attest that\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def validate_attestation_forged(generated_text: str) -> ValidationResult:
+    text = generated_text or ""
+    if not text.strip() or not _ATTEST_FORGE_RE.search(text):
+        return ValidationResult(passed=True)
+    return ValidationResult(
+        passed=False,
+        contradicted_claims=["REJECT_ATTESTATION_FORGED"],
+        rejection_codes=["REJECT_ATTESTATION_FORGED"],
+    )
+
+
+def validate_payload_pixels(grounding_payload: dict) -> ValidationResult:
+    from src.llm.pixel_leak import REJECT_PIXEL_LEAK, find_pixel_leaks
+
+    leaks = find_pixel_leaks(grounding_payload or {})
+    if leaks:
+        return ValidationResult(
+            passed=False,
+            independent_visual_claims=[f"{REJECT_PIXEL_LEAK}:{p}" for p in leaks[:8]],
+            rejection_codes=["REJECT_PIXEL_LEAK"],
+        )
+    return ValidationResult(passed=True)
+
+
+def validate_draft(draft: str, grounding_payload: dict, materiality_thresholds: Optional[dict] = None) -> ValidationResult:
+    """Every numeric token must match a payload value; fail closed on leak or comparison abuse."""
+    return validate_clinical_output(draft, grounding_payload, materiality_thresholds)
 
 
 def validate_clinical_output(
@@ -723,11 +995,16 @@ def validate_clinical_output(
     materiality_thresholds: Optional[dict] = None,
 ) -> ValidationResult:
     """Authoritative gate: numbers + faithfulness + recall + CDS image-narration."""
+    pixels = validate_payload_pixels(grounding_payload)
+    if not pixels.passed:
+        return pixels
     numbers = validate_no_invented_numbers(generated_text, grounding_payload)
     faithfulness = validate_faithfulness(generated_text, grounding_payload)
     recall = validate_recall(generated_text, grounding_payload, materiality_thresholds)
     visual = validate_no_independent_image_interpretation(generated_text, grounding_payload)
-    return ValidationResult.combine(numbers, faithfulness, recall, visual)
+    comparison = validate_comparison_language(generated_text, grounding_payload)
+    attest = validate_attestation_forged(generated_text)
+    return ValidationResult.combine(numbers, faithfulness, recall, visual, comparison, attest)
 
 
 def log_grounding_assessment(
@@ -868,9 +1145,22 @@ def enforce_clinical_gate(
         if second.passed:
             return second_text, replace(second, regenerated=True)
         _log_gate_failure(second, second_text, used_fallback=True, regenerated=True, user_id=user_id)
-        return fallback_text, replace(second, used_fallback=True, regenerated=True, passed=False)
+        closed = fail_closed_template(grounding_payload) or fallback_text
+        return closed, replace(
+            second,
+            used_fallback=True,
+            regenerated=True,
+            passed=False,
+            rejection_codes=list(second.rejection_codes) + ["FAIL_CLOSED"],
+        )
 
-    return fallback_text, replace(first, used_fallback=True, passed=False)
+    closed = fail_closed_template(grounding_payload) or fallback_text
+    return closed, replace(
+        first,
+        used_fallback=True,
+        passed=False,
+        rejection_codes=list(first.rejection_codes) + ["FAIL_CLOSED"],
+    )
 
 
 def grounding_from_prediction(
@@ -896,9 +1186,12 @@ def grounding_from_measurements(
     if regions:
         payload["regions"] = [str(r) for r in regions]
     if model_run:
-        payload["label"] = model_run.get("label") or model_run.get("prediction")
-        payload["confidence"] = model_run.get("confidence")
-        payload["probabilities"] = model_run.get("probabilities") or model_run.get("class_probabilities")
+        from src.ingest.path import is_2d_triage_run
+
+        if not is_2d_triage_run(model_run):
+            payload["label"] = model_run.get("label") or model_run.get("prediction")
+            payload["confidence"] = model_run.get("confidence")
+            payload["probabilities"] = model_run.get("probabilities") or model_run.get("class_probabilities")
         if isinstance(model_run.get("wmh"), dict):
             payload["wmh"] = model_run["wmh"]
     return payload

@@ -12,12 +12,8 @@ comparison_default: "No prior brain MRI available for comparison."
 finding_regions:
   - id: mass_region
     label: Supratentorial parenchyma
-    measurement_ids: [model_confidence, dominant_class_probability]
-    ai_prompt: |
-      In 1-2 sentences, summarize classifier output for a possible mass
-      signal pattern. Use ONLY the provided class probabilities and
-      confidence. Do not invent lesion size or location.
-    fallback: "No discrete mass identified on available sequences; correlate clinically."
+    measurement_ids: []
+    fallback: "Slice-wise research classifier suggested class; not used for measurement or signature."
 
   - id: ventricles
     label: Ventricles
@@ -30,25 +26,10 @@ finding_regions:
     fallback: "No acute territorial infarct on DWI."
 
 impression_rules:
-  - condition: "dominant_class_probability < 0.55"
+  - condition: "model_confidence_raw >= 0"
     severity: normal
     template: |
-      Low model confidence for a high-grade neoplastic pattern on this slice.
-      Correlate with full multiplanar review and clinical history.
-
-  - condition: "dominant_class_probability < 0.75"
-    severity: mild
-    template: |
-      Intermediate classifier signal ({{dominant_class_probability}}) for
-      the leading class **{{predicted_label}}**; recommend structured
-      neuroradiology read and correlation with full study.
-
-  - condition: "dominant_class_probability >= 0.75"
-    severity: moderate
-    template: |
-      Classifier favors **{{predicted_label}}** with probability
-      {{dominant_class_probability}} on the submitted slice — not a
-      definitive diagnosis; full MRI protocol review required.
+      Slice-wise research classifier suggested class {{predicted_label}}; not used for measurement or signature.
 
 recommendation_rules:
   - severity_in: [mild, moderate, severe]

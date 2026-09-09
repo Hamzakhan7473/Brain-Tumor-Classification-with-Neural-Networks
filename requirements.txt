@@ -15,6 +15,7 @@ Pillow>=9.5.0
 opencv-python-headless>=4.7.0
 scikit-learn>=1.2.0
 nibabel>=5.0.0   # 3D NIfTI volumes (BraTS, etc.)
+SimpleITK>=2.3.0  # rigid/affine FLAIR-to-FLAIR registration (not ANTs)
 
 # Configuration
 pyyaml>=6.0

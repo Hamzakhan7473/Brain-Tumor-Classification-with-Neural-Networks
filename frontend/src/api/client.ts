@@ -282,15 +282,28 @@ export async function explainScan(input: {
   return (await res.json()) as ExplanationResponse;
 }
 
-export type ClinicalVerdict = "agree" | "partial" | "disagree";
+export type ClinicalVerdict =
+  | "agree"
+  | "overcall"
+  | "undercall"
+  | "wrong_anatomy"
+  | "wrong_delta"
+  | "useless"
+  | "partial"
+  | "disagree";
 
 export async function submitStructuredClinicalFeedback(input: {
   case_id: string;
+  audit_id: string;
   verdict: ClinicalVerdict;
+  codes?: ClinicalVerdict[];
   ground_truth?: Record<string, unknown> | null;
   error_categories?: string[];
   clinical_notes?: string | null;
   time_spent_s: number;
+  measurements_unedited?: boolean;
+  ingest_at?: string | null;
+  draft_ready_at?: string | null;
   reviewer_display_name?: string | null;
   reviewer_role?: string | null;
   credentials?: string | null;
@@ -303,11 +316,16 @@ export async function submitStructuredClinicalFeedback(input: {
     },
     body: JSON.stringify({
       case_id: input.case_id,
+      audit_id: input.audit_id,
       verdict: input.verdict,
+      codes: input.codes ?? [input.verdict],
       ground_truth: input.ground_truth ?? null,
       error_categories: input.error_categories ?? [],
       clinical_notes: input.clinical_notes ?? null,
       time_spent_s: input.time_spent_s,
+      measurements_unedited: input.measurements_unedited ?? true,
+      ingest_at: input.ingest_at ?? null,
+      draft_ready_at: input.draft_ready_at ?? null,
       reviewer_display_name: input.reviewer_display_name ?? null,
       reviewer_role: input.reviewer_role ?? null,
       credentials: input.credentials ?? null,

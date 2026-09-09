@@ -7,7 +7,6 @@ import types
 
 import pytest
 
-from src.llm.cds_constraint import MODEL_OVERLAY_CAPTION
 from src.llm.validation import (
     validate_clinical_output,
     validate_no_independent_image_interpretation,
@@ -127,12 +126,10 @@ def test_clinical_prose_without_overlay_has_no_image_block(fake_boto3, monkeypat
     assert "must not independently interpret" in joined.lower() or "narrating results" in joined.lower()
 
 
-def test_overlay_is_labeled_and_raw_scan_is_not_attached(fake_boto3, monkeypatch):
+def test_overlay_bytes_are_dropped_no_image_block(fake_boto3, monkeypatch):
     monkeypatch.setenv("BEDROCK_MODEL_ID", "model-x")
-    monkeypatch.setenv("BEDROCK_GUARDRAIL_ID", "gr-1")
     from src.llm.client import generate_clinical_prose
 
-    raw_scan = b"\xff\xd8\xff" + b"RAW_DIAGNOSTIC_PIXELS"
     overlay = b"\x89PNG\r\n\x1a\n" + b"HEATMAP_ONLY"
     generate_clinical_prose(
         "Narrate the classifier output.",
@@ -141,14 +138,21 @@ def test_overlay_is_labeled_and_raw_scan_is_not_attached(fake_boto3, monkeypatch
         visual_overlay=overlay,
     )
     content = fake_boto3.calls[0]["messages"][0]["content"]
-    images = [b["image"]["source"]["bytes"] for b in content if "image" in b]
-    assert images == [overlay]
-    assert raw_scan not in images
-    texts = []
-    for block in content:
-        if "text" in block:
-            texts.append(block["text"])
-        gc = (block.get("guardContent") or {}).get("text") or {}
-        if gc.get("text"):
-            texts.append(gc["text"])
-    assert any(MODEL_OVERLAY_CAPTION[:40] in t for t in texts)
+    assert not any("image" in block for block in content)
+
+
+def test_heatmap_metadata_is_text_only(fake_boto3, monkeypatch):
+    monkeypatch.setenv("BEDROCK_MODEL_ID", "model-x")
+    from src.llm.client import generate_clinical_prose
+
+    generate_clinical_prose(
+        "Narrate the classifier output.",
+        query="explain findings",
+        grounding_payload=GLIOMA_PAYLOAD,
+        visual_overlay={"present": True, "bbox_ids": ["et-1"]},
+    )
+    content = fake_boto3.calls[0]["messages"][0]["content"]
+    assert not any("image" in block for block in content)
+    joined = " ".join(block.get("text", "") for block in content)
+    assert "bbox_ids" in joined
+    assert "et-1" in joined

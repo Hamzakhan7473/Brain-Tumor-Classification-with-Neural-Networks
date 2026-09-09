@@ -34,10 +34,18 @@ def _ensure_dummy_keras_weights() -> None:
 
 _ensure_dummy_keras_weights()
 
+from src.api.attestation import attestation_text_for  # noqa: E402
 from src.api.main import app  # noqa: E402
 from src.llm.report_builder import ReportBuilder  # noqa: E402
 
 HEADERS = {"X-API-Key": "test-key"}
+
+
+def _attest_body(report: dict, attested_by: str = "Dr. Test") -> dict:
+    return {
+        "attested_by": attested_by,
+        "attestation_text": attestation_text_for(report["model_run_id"]),
+    }
 
 
 @pytest.fixture
@@ -53,6 +61,7 @@ def wmh_model_run():
         "model_name": "unet_3d_wmh",
         "model_version": "v1",
         "confidence": 0.42,
+        "ingest_path": "clinical",
         "wmh": {
             "volume_cc": 10.9,
             "lesion_voxels": 1200,
@@ -82,16 +91,11 @@ def signed_draft_id(client, wmh_model_run):
         json={"case_id": "1.2.3.4.6", "template_id": "brain_mri_wmh_svd", "model_run": wmh_model_run},
         headers=HEADERS,
     )
-    rid = r.json()["report_id"]
+    draft = r.json()
+    rid = draft["report_id"]
     at = client.post(
         f"/report/{rid}/attest",
-        json={
-            "attested_by": "Dr. Test",
-            "attestation_text": (
-                "I have reviewed the AI-generated content against the source measurements "
-                "and confirm its accuracy"
-            ),
-        },
+        json=_attest_body(draft),
         headers=HEADERS,
     )
     assert at.status_code == 200, at.text
@@ -161,15 +165,10 @@ def test_signed_report_is_immutable(client, signed_draft_id):
 
 
 def test_sign_off_creates_audit_with_hash(client, fresh_draft_id):
+    draft = client.get(f"/report/{fresh_draft_id}", headers=HEADERS).json()
     at = client.post(
         f"/report/{fresh_draft_id}/attest",
-        json={
-            "attested_by": "Dr. Test",
-            "attestation_text": (
-                "I have reviewed the AI-generated content against the source measurements "
-                "and confirm its accuracy"
-            ),
-        },
+        json=_attest_body(draft),
         headers=HEADERS,
     )
     assert at.status_code == 200, at.text
@@ -213,10 +212,9 @@ def test_pdf_export(client, signed_draft_id):
         assert r.content[:4] == b"%PDF"
 
 
-_ATTEST_TEXT = (
-    "I have reviewed the AI-generated content against the source measurements "
-    "and confirm its accuracy"
-)
+def _attest_text_for_id(report_id: str, client) -> str:
+    draft = client.get(f"/report/{report_id}", headers=HEADERS).json()
+    return attestation_text_for(draft["model_run_id"])
 
 
 def test_draft_includes_content_provenance(client, wmh_model_run):
@@ -244,7 +242,7 @@ def test_attest_rejects_incomplete_body(client, fresh_draft_id):
     assert missing_text.status_code == 422
     missing_name = client.post(
         f"/report/{fresh_draft_id}/attest",
-        json={"attestation_text": _ATTEST_TEXT},
+        json={"attestation_text": _attest_text_for_id(fresh_draft_id, client)},
         headers=HEADERS,
     )
     assert missing_name.status_code == 422
@@ -274,12 +272,12 @@ def test_sign_pdf_fhir_reject_unattested(client, fresh_draft_id):
     assert "attest" in str(sign.json().get("detail", "")).lower()
 
     pdf = client.get(f"/report/{fresh_draft_id}/pdf", headers=HEADERS)
-    assert pdf.status_code == 400
-    assert "attest" in str(pdf.json().get("detail", "")).lower()
+    assert pdf.status_code == 403
+    assert "signed" in str(pdf.json().get("detail", "")).lower()
 
     fhir = client.get(f"/report/{fresh_draft_id}/fhir", headers=HEADERS)
-    assert fhir.status_code == 400
-    assert "attest" in str(fhir.json().get("detail", "")).lower()
+    assert fhir.status_code == 403
+    assert "signed" in str(fhir.json().get("detail", "")).lower()
 
 
 def test_attest_is_logged_to_audit_trail(client, fresh_draft_id):
@@ -288,7 +286,10 @@ def test_attest_is_logged_to_audit_trail(client, fresh_draft_id):
 
     r = client.post(
         f"/report/{fresh_draft_id}/attest",
-        json={"attested_by": "Dr. Test", "attestation_text": _ATTEST_TEXT},
+        json={
+            "attested_by": "Dr. Test",
+            "attestation_text": _attest_text_for_id(fresh_draft_id, client),
+        },
         headers=HEADERS,
     )
     assert r.status_code == 200, r.text

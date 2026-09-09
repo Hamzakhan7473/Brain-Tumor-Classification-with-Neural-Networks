@@ -408,10 +408,19 @@ export default function ReportDraft() {
 
         {!effectiveReadOnly && (
           <div className="report-draft-footer" style={{ flexDirection: "column", alignItems: "stretch", gap: 12 }}>
+            {String(report?.ingest_path || "") === "demo" || report?.export_allowed === false ? (
+              <p className="text-ios-footnote" data-testid="demo-path-banner" style={{ color: "#b45309", margin: 0 }}>
+                {String(report?.ingest_path || "") === "demo"
+                  ? "DEMO — non-clinical upload (JPG/PNG or 2D triage). This report cannot be signed or exported."
+                  : "2D research triage without a trusted 3D volume cannot be signed or exported."}
+              </p>
+            ) : null}
             <AttestationGate
               attested={Boolean(report?.attested_at)}
               attestedBy={typeof report?.attested_by === "string" ? report.attested_by : null}
               attestedAt={typeof report?.attested_at === "string" ? report.attested_at : null}
+              auditId={typeof report?.model_run_id === "string" ? report.model_run_id : null}
+              disabled={String(report?.ingest_path || "") === "demo" || report?.export_allowed === false}
               busy={attestBusy}
               error={attestErr}
               onSubmit={handleAttest}
@@ -424,9 +433,9 @@ export default function ReportDraft() {
                 type="button"
                 className="report-draft-btn"
                 data-testid="finalize-sign"
-                disabled={!canFinalize(Boolean(report?.attested_at))}
+                disabled={!canFinalize(Boolean(report?.attested_at), typeof report?.ingest_path === "string" ? report.ingest_path : null, report?.export_allowed === false ? false : undefined)}
                 title={
-                  canFinalize(Boolean(report?.attested_at))
+                  canFinalize(Boolean(report?.attested_at), typeof report?.ingest_path === "string" ? report.ingest_path : null, report?.export_allowed === false ? false : undefined)
                     ? "Electronically sign the attested report"
                     : "Submit clinician attestation before signing"
                 }
@@ -492,7 +501,7 @@ export default function ReportDraft() {
                 type="button"
                 className="report-draft-btn"
                 data-testid="finalize-sign-confirm"
-                disabled={!signerName || !signerRole || !signAck || !canFinalize(Boolean(report?.attested_at))}
+                disabled={!signerName || !signerRole || !signAck || !canFinalize(Boolean(report?.attested_at), typeof report?.ingest_path === "string" ? report.ingest_path : null, report?.export_allowed === false ? false : undefined)}
                 onClick={() => void handleSign()}
               >
                 Sign
