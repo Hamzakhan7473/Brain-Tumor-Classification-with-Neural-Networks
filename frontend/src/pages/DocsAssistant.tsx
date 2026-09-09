@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { askDocs, flagDocsInaccurate, listIndexedDocs, type DocsAssistantAnswer, type DocsManifestResponse } from "@/lib/docsApi";
+import { IosButton } from "../components/ui/IosButton";
 import "./DocsAssistant.css";
 
 const SUGGESTED_QUESTIONS = [
@@ -145,7 +146,7 @@ export default function DocsAssistant() {
   const docCount = docManifest?.documents?.length ?? 0;
 
   return (
-    <div className="docs-assistant">
+    <div className="app-page docs-assistant">
       <div className="da-header">
         <div>
           <h1>Docs Assistant</h1>
@@ -219,9 +220,9 @@ export default function DocsAssistant() {
               <div className="da-error">
                 <strong>Error:</strong> {error}
                 <div>
-                  <button type="button" className="btn" onClick={() => void runAsk()}>
+                  <IosButton variant="secondary" size="sm" onClick={() => void runAsk()}>
                     Try again
-                  </button>
+                  </IosButton>
                 </div>
               </div>
             )}
@@ -246,20 +247,21 @@ export default function DocsAssistant() {
                 ) : null}
 
                 <div className="da-actions">
-                  <button type="button" className="primary" onClick={handleCopyWithCitations}>
+                  <IosButton variant="primary" size="sm" onClick={handleCopyWithCitations}>
                     Copy with citations
-                  </button>
-                  <button
-                    type="button"
+                  </IosButton>
+                  <IosButton
+                    variant="secondary"
+                    size="sm"
                     onClick={() => {
                       void navigator.clipboard.writeText(answer.audit_id);
                     }}
                   >
                     Copy audit id
-                  </button>
-                  <button type="button" onClick={() => void handleFlagInaccurate()}>
+                  </IosButton>
+                  <IosButton variant="ghost" size="sm" onClick={() => void handleFlagInaccurate()}>
                     Flag inaccurate
-                  </button>
+                  </IosButton>
                   <span className="da-audit-id">audit {answer.audit_id}</span>
                 </div>
               </div>

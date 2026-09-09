@@ -16,6 +16,7 @@ import numpy as np
 from src.inference.distribution_shift import detect_distribution_shift
 from src.inference.inference_exceptions import InputValidationFailed
 from src.inference.input_validator import validate_for_model
+from src.inference.qc import build_qc
 from src.inference.model_registry import MODEL_DEFS, classification_model_keys, predict_with_uncertainty, registry, resolve_weights
 from src.inference.preprocessing import load_2d
 
@@ -134,7 +135,12 @@ def run_predict_2d(
 
     vr = validate_for_model(file_bytes, filename, model_name)
     if not vr.accepted:
-        raise InputValidationFailed(_validation_http_detail(vr))
+        detail = _validation_http_detail(vr)
+        detail["qc"] = build_qc(
+            model_name=model_name, filename=filename, vr=vr, ran_inference=False
+        )
+        detail["trusted"] = False
+        raise InputValidationFailed(detail)
 
     km = registry.get_model(model_name)
     if km is None:
@@ -214,6 +220,7 @@ def run_predict_2d(
             pass
 
     voxel_meta = vr.metadata if vr.metadata else {}
+    qc = build_qc(model_name=model_name, filename=filename, vr=vr, ran_inference=True)
 
     return {
         "prediction": prediction,
@@ -235,7 +242,11 @@ def run_predict_2d(
             "metadata": voxel_meta,
             "distribution_z_score": round(mean_z, 3),
             "distribution_is_ood": bool(ood_pack.get("is_ood")),
+            "trusted": False,
+            "qc": qc,
         },
+        "qc": qc,
+        "trusted": False,
         "disposition": disposition,
         "display_prediction": display_prediction,
         "radiologist_action_required": radiologist_action_required,
@@ -303,6 +314,7 @@ def predict_legacy_tuple(
     infer_meta = {
         "input_shape": out["input_shape"],
         "preprocessing_applied": out.get("preprocessing_applied"),
+        "saliency_map_b64": out.get("saliency_map_b64"),
     }
     return (
         label,

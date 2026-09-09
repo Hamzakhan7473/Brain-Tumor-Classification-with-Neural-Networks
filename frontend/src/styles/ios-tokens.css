@@ -727,6 +727,48 @@
   width: 100%;
 }
 
+/* Router links styled as iOS buttons */
+a.ios-btn,
+a.ios-btn:visited {
+  text-decoration: none;
+}
+
+a.ios-btn--primary,
+a.ios-btn--primary:visited,
+a.ios-btn--primary:hover,
+a.ios-btn--primary:active {
+  color: var(--white);
+  background: var(--green-700);
+  border: none;
+}
+
+a.ios-btn--secondary,
+a.ios-btn--secondary:visited,
+a.ios-btn--secondary:hover,
+a.ios-btn--secondary:active {
+  color: var(--green-700);
+  background: var(--green-50);
+  border: 1px solid var(--green-300);
+}
+
+a.ios-btn--ghost,
+a.ios-btn--ghost:visited,
+a.ios-btn--ghost:hover,
+a.ios-btn--ghost:active {
+  color: var(--green-700);
+  background: transparent;
+  border: 1px solid var(--green-300);
+}
+
+a.ios-btn--danger,
+a.ios-btn--danger:visited,
+a.ios-btn--danger:hover,
+a.ios-btn--danger:active {
+  color: var(--white);
+  background: var(--green-900);
+  border: none;
+}
+
 @media (max-width: 920px) {
   .ios-hide-narrow-nav {
     display: none !important;

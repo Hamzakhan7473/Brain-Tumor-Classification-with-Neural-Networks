@@ -4,7 +4,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { formatApiConnectionHint, generateReport, ReportResponse } from "../../api/client";
+import { formatApiConnectionHint, generateReport, explainScan, attestGeneratedContent, ReportResponse, ExplanationResponse } from "../../api/client";
 import {
   findingsDisagreeApi,
   reportDefer,
@@ -13,6 +13,10 @@ import {
 import type { Phase, ScanFindings, WMHResult, WMHSeverity } from "../../types/scan";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { IosButton } from "../ui/IosButton";
+import { AttestationGate } from "../ui/AttestationGate";
+import { ProviderBadge } from "../ui/ProviderBadge";
+import { useFeatures } from "../../hooks/useFeatures";
+import { TRIAGE_BANNER, triageSuggestedLine } from "../../lib/triageCopy";
 
 type FindingsCardProps = {
   findings: ScanFindings | null;
@@ -39,20 +43,15 @@ type ReportMetricRow = {
 };
 
 function severityColorCss(sev: ValueTone): string {
-  if (sev === "danger") return "var(--green-900)";
-  if (sev === "warning") return "var(--green-600)";
-  if (sev === "ok") return "var(--green-700)";
-  return "var(--ink-mid)";
+  if (sev === "danger") return "#dc2626";
+  if (sev === "warning") return "#d97706";
+  if (sev === "ok") return "var(--modern-ink, #09090b)";
+  return "var(--modern-ink-soft, #3f3f46)";
 }
 
 function capitalizeLeading(s: string): string {
   if (!s) return "";
   return s.slice(0, 1).toUpperCase() + s.slice(1);
-}
-
-function isNoTumorLabel(pred: string): boolean {
-  const t = pred.trim().toLowerCase().replace(/\s+/g, "");
-  return t === "notumor" || t === "no_tumor";
 }
 
 function fazekasFromSeverity(g: WMHSeverity): number {
@@ -70,15 +69,8 @@ function wmhSyntheticPercentile(w: WMHResult): number {
   return Math.min(99, Math.max(51, v));
 }
 
-function normPredKey(pred: string): string {
-  return pred.trim().toLowerCase().replace(/\s+/g, "_").replace(/^no_/i, "");
-}
-
 /** Serif-clinical prose with &lt;strong&gt; emphasis (rendered safely as JSX fragments). */
 function generateImpression(findings: ScanFindings): React.ReactNode {
-  const seg = findings.isSegmentation;
-  const confPct = `${(findings.confidence * 100).toFixed(1)}%`;
-
   if (findings.guardrails?.disposition === "indeterminate") {
     const msg =
       findings.guardrails.radiologistActionRequired?.trim() ||
@@ -90,7 +82,7 @@ function generateImpression(findings: ScanFindings): React.ReactNode {
     );
   }
 
-  if (seg && findings.wmh) {
+  if (findings.isSegmentation && findings.wmh) {
     const w = findings.wmh;
     const pctOrdinal =
       typeof w.age_matched_percentile === "number"
@@ -134,44 +126,9 @@ function generateImpression(findings: ScanFindings): React.ReactNode {
     );
   }
 
-  const nk = normPredKey(findings.prediction);
-  if (isNoTumorLabel(findings.prediction) || nk === "no_tumor" || nk === "notumor") {
-    return (
-      <>
-        <strong>No mass lesion or focal abnormality identified</strong> on the reviewed slices. Confidence:{" "}
-        <strong>{confPct}</strong>.
-      </>
-    );
-  }
-  if (nk.includes("glioma")) {
-    return (
-      <>
-        Findings suggestive of <strong>glial neoplasm</strong> with <strong>{confPct}</strong> model confidence. Tissue
-        characterization and grading require histopathologic correlation.
-      </>
-    );
-  }
-  if (nk.includes("meningioma")) {
-    return (
-      <>
-        Extra-axial mass with imaging features suggestive of <strong>meningioma</strong>. Confidence:{" "}
-        <strong>{confPct}</strong>.
-      </>
-    );
-  }
-  if (nk.includes("pituitary")) {
-    return (
-      <>
-        Sellar/parasellar lesion with imaging features consistent with <strong>pituitary adenoma</strong>. Confidence:{" "}
-        <strong>{confPct}</strong>.
-      </>
-    );
-  }
-
   return (
     <>
-      <strong>{capitalizeLeading(findings.prediction)}</strong> — model confidence <strong>{confPct}</strong>. Correlation
-      with histopathologic or advanced imaging advised.
+      {TRIAGE_BANNER}. {triageSuggestedLine(findings.prediction)}
     </>
   );
 }
@@ -198,13 +155,25 @@ function buildMetricsWmhRows(w: WMHResult): ReportMetricRow[] {
     w.volume_cc_ci_95 && w.volume_cc_ci_95.length >= 2
       ? `${w.volume_cc.toFixed(1)} cc (95% CI: ${w.volume_cc_ci_95[0].toFixed(1)} – ${w.volume_cc_ci_95[1].toFixed(1)} cc)`
       : `${w.volume_cc.toFixed(1)} cc`;
-  return [
+  const rows: ReportMetricRow[] = [
     {
       label: "WMH volume",
       value: volPretty,
       severity: w.volume_cc >= 15 ? "warning" : "neutral",
       barWidth: volPct,
     },
+  ];
+  const pv = w.volume_cc_periventricular;
+  const deep = w.volume_cc_deep_subcortical;
+  const infra = w.volume_cc_infratentorial;
+  if (typeof pv === "number" || typeof deep === "number" || typeof infra === "number") {
+    rows.push({
+      label: "Regional volumes",
+      value: `PV ${(pv ?? 0).toFixed(1)} · deep ${(deep ?? 0).toFixed(1)} · infra ${(infra ?? 0).toFixed(1)} cc`,
+      severity: "neutral",
+    });
+  }
+  rows.push(
     {
       label: "Severity grade",
       value: `${w.severity_grade} · grade ${fz}`,
@@ -221,19 +190,19 @@ function buildMetricsWmhRows(w: WMHResult): ReportMetricRow[] {
       value: `${w.lesion_voxels.toLocaleString()} voxels`,
       severity: "neutral",
     },
-  ];
+  );
+  return rows;
 }
 
-function buildMetrics2dRows(findings: ScanFindings, tumorHighlight: boolean): ReportMetricRow[] {
+function buildMetrics2dRows(findings: ScanFindings): ReportMetricRow[] {
   const sorted = [...findings.classProbs].sort((a, b) => b.probability - a.probability);
-  const predTone: ValueTone = tumorHighlight ? "danger" : "ok";
   const ct = confidenceTone(findings.confidence);
 
   const rows: ReportMetricRow[] = [
     {
-      label: "Predicted class",
+      label: "Triage class (research)",
       value: capitalizeLeading(findings.prediction),
-      severity: predTone,
+      severity: "neutral",
     },
     {
       label: "Model confidence",
@@ -280,7 +249,11 @@ function transparencyRows(findings: ScanFindings): { label: string; value: strin
     }
   }
 
+  const qcObj = (v.qc && typeof v.qc === "object" ? v.qc : {}) as Record<string, unknown>;
+  const qcOverall = typeof v.qc_overall === "string" ? v.qc_overall : typeof qcObj.overall === "string" ? qcObj.overall : "";
+
   return [
+    { label: "QC", value: qcOverall || "—" },
     { label: "Detected sequence", value: `${seq} (${sc} confidence)` },
     { label: "Voxel size (mm)", value: `${dims} mm` },
     { label: "Distribution check", value: ood ? "⚠ Out of distribution" : "✓ Within offline validation band" },
@@ -313,6 +286,13 @@ export default function FindingsCard({
   const [overrideText, setOverrideText] = useState("");
   const [deferReason, setDeferReason] = useState("");
   const [disagreeNotes, setDisagreeNotes] = useState("");
+  const [explanation, setExplanation] = useState<ExplanationResponse | null>(null);
+  const [explainLoading, setExplainLoading] = useState(false);
+  const [explainError, setExplainError] = useState("");
+  const [explainAttested, setExplainAttested] = useState(false);
+  const [explainAttestBusy, setExplainAttestBusy] = useState(false);
+  const [explainAttestErr, setExplainAttestErr] = useState<string | null>(null);
+  const { llmProvider } = useFeatures();
 
   const reportModel = findings?.modelName?.trim() || model;
 
@@ -369,6 +349,7 @@ export default function FindingsCard({
           study_instance_uid: studyUid || r.study_instance_uid,
           report_text: r.report_text,
           timestamp: ts,
+          provenance: r.provenance ?? null,
         }),
       );
       navigate("/report");
@@ -377,6 +358,28 @@ export default function FindingsCard({
       setReportError(formatApiConnectionHint(raw));
     } finally {
       setReportLoading(false);
+    }
+  }
+
+  async function handleExplain() {
+    if (!file || !findings) return;
+    setExplainError("");
+    setExplainLoading(true);
+    setExplainAttested(false);
+    try {
+      const r = await explainScan({
+        file,
+        model: reportModel,
+        study_instance_uid: studyUid || undefined,
+        site_id: siteId || undefined,
+        shadow_mode: shadowMode,
+      });
+      setExplanation(r);
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : String(e);
+      setExplainError(formatApiConnectionHint(raw));
+    } finally {
+      setExplainLoading(false);
     }
   }
 
@@ -420,7 +423,7 @@ export default function FindingsCard({
     try {
       await findingsDisagreeApi({ audit_id: aid, notes: disagreeNotes.trim(), apiKeyOverride: apiKey });
       setDisagreeNotes("");
-      setSignNote("Imaging disagreement captured for model improvement.");
+      setSignNote("Imaging disagreement persisted for QA metrics.");
     } catch (e) {
       setSignNote(e instanceof Error ? e.message : String(e));
     } finally {
@@ -441,17 +444,12 @@ export default function FindingsCard({
 
   const impression = useMemo(() => (findings ? generateImpression(findings) : null), [findings]);
 
-  const tumorRiskDanger = useMemo(() => {
-    if (!findings || findings.isSegmentation) return false;
-    return !isNoTumorLabel(findings.prediction);
-  }, [findings]);
-
   const metricRows = useMemo((): ReportMetricRow[] => {
     if (!findings) return [];
     if (findings.isSegmentation && findings.wmh) return buildMetricsWmhRows(findings.wmh);
-    if (!findings.isSegmentation) return buildMetrics2dRows(findings, tumorRiskDanger);
+    if (!findings.isSegmentation) return buildMetrics2dRows(findings);
     return [];
-  }, [findings, tumorRiskDanger]);
+  }, [findings]);
 
   if (phase === "error") {
     const raw = (apiError || "").trim() || "The model could not analyze this scan.";
@@ -584,17 +582,33 @@ export default function FindingsCard({
         >
           {findings.modelName}
         </span>
+        {!seg ? (
+          <span
+            className="text-ios-caption2 font-semibold font-ios"
+            data-testid="triage-chip"
+            style={{
+              padding: "4px 10px",
+              borderRadius: "var(--radius-ios)",
+              border: "1px solid var(--line)",
+              color: "var(--ink-mid)",
+              background: "var(--surface)",
+            }}
+          >
+            {TRIAGE_BANNER}
+          </span>
+        ) : null}
         <span className="text-ios-caption2 font-medium font-ios text-ns-muted">{findings.inferenceMs}ms</span>
         {findings.isSimulated ? <span className="ios-sim-badge">Simulated</span> : null}
       </div>
 
       {!seg ? (
         <div
-          className={tumorRiskDanger ? "ios-risk-banner" : "ios-risk-banner--ok"}
+          className="ios-risk-banner--muted"
           role="status"
+          data-testid="triage-banner"
           style={{ marginLeft: 14, marginRight: 14 }}
         >
-          {tumorRiskDanger ? "Tumor detected — research result only" : "No tumor detected"}
+          {TRIAGE_BANNER}
         </div>
       ) : findings.wmh ? (
         findings.wmh.risk_level === "High" || findings.wmh.risk_level === "Very High" ? (
@@ -646,6 +660,75 @@ export default function FindingsCard({
         >
           {impression}
         </div>
+        <div style={{ marginTop: 10 }}>
+          <IosButton
+            variant="secondary"
+            size="sm"
+            loading={explainLoading}
+            disabled={!file || explainLoading}
+            onClick={() => void handleExplain()}
+          >
+            {explainLoading ? "Generating…" : explanation ? "Regenerate AI explanation" : "Generate AI explanation"}
+          </IosButton>
+        </div>
+        {explainError ? (
+          <div className="app-text-error" style={{ marginTop: 8, fontSize: 12, whiteSpace: "pre-wrap" }}>
+            {explainError}
+          </div>
+        ) : null}
+        {explanation ? (
+          <div style={{ marginTop: 10 }}>
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: "0.5px",
+                textTransform: "uppercase",
+                color: "var(--ink-mute)",
+                marginBottom: 6,
+              }}
+            >
+              AI explanation
+            </div>
+            <div
+              style={{
+                fontFamily: 'Georgia, "Times New Roman", serif',
+                fontSize: 12.5,
+                lineHeight: 1.6,
+                color: "var(--ink-mid)",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {explanation.explanation}
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <ProviderBadge provider={llmProvider} provenance={explanation.provenance} />
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <AttestationGate
+                attested={explainAttested}
+                busy={explainAttestBusy}
+                error={explainAttestErr}
+                onSubmit={async (name, text) => {
+                  setExplainAttestBusy(true);
+                  setExplainAttestErr(null);
+                  try {
+                    await attestGeneratedContent({
+                      attested_by: name,
+                      attestation_text: text,
+                      content_kind: "explanation",
+                    });
+                    setExplainAttested(true);
+                  } catch (err) {
+                    setExplainAttestErr(err instanceof Error ? err.message : "Attestation failed");
+                  } finally {
+                    setExplainAttestBusy(false);
+                  }
+                }}
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div style={{ padding: "12px 14px 8px 14px" }}>

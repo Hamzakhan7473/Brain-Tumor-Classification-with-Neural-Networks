@@ -1,32 +1,29 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { AuthShell } from "../components/layout/AuthShell";
+import { IosLinkButton } from "../components/ui/IosButton";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   return (
-    <div className="container" style={{ maxWidth: 720 }}>
-      <h2 style={{ marginTop: 16 }}>Log in</h2>
-      <p style={{ color: "var(--ink-mute)", marginTop: 4 }}>
-        For live demos, sign-in is optional — use the button below to enter the app immediately.
-      </p>
+    <AuthShell>
+      <h1>Log in</h1>
+      <p>For live demos, sign-in is optional — use the button below to enter the app immediately.</p>
 
-      <div className="card" style={{ marginTop: 14 }}>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
-          <Link to="/upload" className="btn-primary">
+      <div className="card">
+        <div className="auth-actions auth-actions--top">
+          <IosLinkButton to="/upload" variant="primary">
             Try demo — upload a scan
-          </Link>
-          <Link to="/dashboard" className="btn btnOutline">
+          </IosLinkButton>
+          <IosLinkButton to="/dashboard" variant="ghost">
             Open dashboard
-          </Link>
+          </IosLinkButton>
         </div>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-mute)", marginBottom: 8 }}>
-          Optional (placeholder) credentials
-        </div>
-        <div style={{ display: "grid", gap: 10 }}>
+        <div className="app-section-label">Optional (placeholder) credentials</div>
+        <div className="auth-form-grid">
           <label>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Email</div>
+            <span>Email</span>
             <input
               type="text"
               value={email}
@@ -35,7 +32,7 @@ export default function Login() {
             />
           </label>
           <label>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Password</div>
+            <span>Password</span>
             <input
               type="password"
               value={password}
@@ -45,23 +42,22 @@ export default function Login() {
           </label>
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
-          <Link to="/dashboard" className="btn">
+        <div className="auth-actions">
+          <IosLinkButton to="/dashboard" variant="secondary">
             Log in (same as open dashboard)
-          </Link>
-          <Link to="/signup" className="btn btnOutline">
+          </IosLinkButton>
+          <IosLinkButton to="/signup" variant="ghost">
             Sign up form
-          </Link>
-          <Link to="/" className="btn">
+          </IosLinkButton>
+          <IosLinkButton to="/" variant="secondary">
             Back to home
-          </Link>
+          </IosLinkButton>
         </div>
 
-        <p style={{ marginTop: 10, fontSize: 12, color: "var(--ink-mute)" }}>
+        <p className="app-text-muted" style={{ marginTop: 12, fontSize: 12 }}>
           Hospital SSO and real accounts can be wired later; this build is optimized for guided demos.
         </p>
       </div>
-    </div>
+    </AuthShell>
   );
 }
-

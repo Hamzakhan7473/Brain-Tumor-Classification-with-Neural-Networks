@@ -36,8 +36,8 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--green-800);
-  background: var(--green-100);
+  color: var(--modern-ink-soft);
+  background: var(--modern-hover);
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 6px 12px;
@@ -98,7 +98,7 @@
   font-weight: 700;
   font-family: var(--sans);
   cursor: pointer;
-  background: var(--green-600);
+  background: var(--modern-primary);
   color: var(--white);
   display: inline-flex;
   align-items: center;
@@ -129,8 +129,8 @@
 }
 
 .da-suggest:hover {
-  border-color: var(--green-400);
-  color: var(--green-800);
+  border-color: var(--modern-border-strong);
+  color: var(--modern-ink-soft);
 }
 
 .da-reasoning {
@@ -139,7 +139,7 @@
   gap: 10px;
   padding: 12px 14px;
   border-radius: 12px;
-  background: var(--green-50);
+  background: var(--modern-hover);
   border: 1px solid var(--line);
   margin-bottom: 12px;
 }
@@ -148,7 +148,7 @@
   width: 18px;
   height: 18px;
   border: 2px solid var(--line);
-  border-top-color: var(--green-600);
+  border-top-color: var(--modern-primary);
   border-radius: 50%;
   animation: da-spin 0.7s linear infinite;
 }
@@ -220,11 +220,11 @@
 }
 
 .da-confidence.high .da-confidence-dot {
-  background: var(--green-600);
+  background: var(--modern-primary);
 }
 
 .da-confidence.med .da-confidence-dot {
-  background: var(--green-800);
+  background: var(--modern-ink-soft);
 }
 
 .da-confidence.low .da-confidence-dot {
@@ -257,15 +257,15 @@
   border-radius: 6px;
   border: 1px solid rgba(37, 196, 143, 0.45);
   background: rgba(37, 196, 143, 0.1);
-  color: var(--green-700);
+  color: var(--modern-ink-soft);
   cursor: pointer;
   vertical-align: super;
 }
 
 .cite-chip:hover {
-  background: var(--green-600);
+  background: var(--modern-primary);
   color: var(--white);
-  border-color: var(--green-600);
+  border-color: var(--modern-primary);
   transform: translateY(-1px);
 }
 
@@ -278,7 +278,7 @@
 }
 
 .da-actions button.primary {
-  background: var(--green-600);
+  background: var(--modern-primary);
   color: var(--white);
   border: none;
   border-radius: 12px;
@@ -363,8 +363,8 @@
   width: 24px;
   height: 24px;
   border-radius: 8px;
-  background: var(--green-100);
-  color: var(--green-800);
+  background: var(--modern-hover);
+  color: var(--modern-ink-soft);
   font-weight: 800;
   font-size: 12px;
   display: flex;
@@ -411,7 +411,7 @@
 
 .da-relevance-bar > div {
   height: 100%;
-  background: var(--green-500);
+  background: var(--modern-ink-soft);
   border-radius: 999px;
 }
 
@@ -433,7 +433,7 @@
 }
 
 .da-kb-live {
-  color: var(--green-700);
+  color: var(--modern-ink-soft);
   font-weight: 700;
   font-size: 12px;
 }

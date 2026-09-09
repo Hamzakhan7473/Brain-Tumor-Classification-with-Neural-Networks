@@ -81,10 +81,10 @@ def verdict_to_feedback_status(verdict: str) -> str:
     v = (verdict or "").lower().strip()
     if v == "agree":
         return "confirmed"
-    if v == "disagree":
-        return "disagreed"
     if v == "partial":
         return "needs_more_info"
+    if v in {"disagree", "overcall", "undercall", "wrong_anatomy", "wrong_delta", "useless"}:
+        return "disagreed"
     return "pending"
 
 
@@ -312,6 +312,7 @@ async def submit_shadow_feedback(
             "$set": {
                 "feedback.status": fb_status,
                 "feedback.verdict": v,
+                "feedback.schema": "neurosight.feedback.v1",
                 "feedback.ground_truth": ground_truth,
                 "feedback.notes": (notes or "")[:500] if notes else None,
                 "feedback.submitted_by": submitted_by,

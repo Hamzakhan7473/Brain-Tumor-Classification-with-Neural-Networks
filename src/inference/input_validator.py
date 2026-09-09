@@ -21,6 +21,7 @@ class ValidationResult:
     warnings: list[str]
     errors: list[str]
     metadata: dict
+    trusted: bool = False
 
 
 def _skew_sample(arr: np.ndarray) -> float:
@@ -152,10 +153,29 @@ def _validate_dicom_2d(file_bytes: bytes) -> tuple[str, float, dict]:
     ds = pydicom.dcmread(io.BytesIO(file_bytes))
 
     desc = (getattr(ds, "SeriesDescription", "") or "").upper()
+    raw_it = getattr(ds, "ImageType", None)
+    if raw_it is None:
+        image_type: list[str] = []
+    elif isinstance(raw_it, str):
+        image_type = [raw_it.upper()]
+    else:
+        try:
+            image_type = [str(x).upper() for x in list(raw_it)]
+        except TypeError:
+            image_type = [str(raw_it).upper()]
+    slice_th = None
+    try:
+        raw_th = getattr(ds, "SliceThickness", None)
+        if raw_th is not None and str(raw_th).strip():
+            slice_th = float(raw_th)
+    except (TypeError, ValueError):
+        slice_th = None
     metadata = {
-        "modality": str(getattr(ds, "Modality", "")),
+        "modality": str(getattr(ds, "Modality", "") or ""),
         "manufacturer": str(getattr(ds, "Manufacturer", "")),
         "series_desc": desc,
+        "image_type": image_type,
+        "slice_thickness_mm": slice_th,
         "patient_age": str(getattr(ds, "PatientAge", "")),
         "patient_sex": str(getattr(ds, "PatientSex", "")),
     }
@@ -219,25 +239,45 @@ def validate_for_model(
         if mx > 3.5 or vv > 18.0:
             warnings.append("Coarse voxel grid — volumetric summaries may underestimate fine lesion load.")
 
-        return ValidationResult(True, seq, conf, warnings, errors, metadata)
+        return ValidationResult(True, seq, conf, warnings, errors, metadata, trusted=True)
 
     # 2D classifier path
     ext = Path(fname).suffix.lower()
     if low.endswith(".dcm") or ext in (".dcm", ".dicom"):
         seq, conf, meta = _validate_dicom_2d(file_bytes)
         metadata.update(meta)
-        if seq not in {"unknown", "FLAIR"} and seq in {"T2", "DWI"}:
-            warnings.append(
-                f"DICOM suggests {seq}, not structural T1; classifier was trained on brain-tumor JPG-style slices — interpret cautiously.",
+        mod = str(metadata.get("modality") or "").upper().strip()
+        if mod and mod not in {"MR", "MRI"}:
+            errors.append(
+                f"Series modality is {mod}, not MR. Limited exam; measurement not applied.",
             )
-        return ValidationResult(True, seq, conf, warnings, errors, metadata)
+            return ValidationResult(False, seq, conf, warnings, errors, metadata, trusted=False)
+        image_type = [str(x).upper() for x in (metadata.get("image_type") or [])]
+        if any("LOCALIZER" in x for x in image_type):
+            errors.append(
+                "DICOM series check failed (ImageType LOCALIZER). "
+                "Limited exam; measurement not applied.",
+            )
+            return ValidationResult(False, seq, conf, warnings, errors, metadata, trusted=False)
+        if seq in {"T2", "DWI", "FLAIR"}:
+            errors.append(
+                f"2D triage classifier will not infer on {seq}. Required: structural T1-like series. "
+                "Limited exam; measurement not applied.",
+            )
+            return ValidationResult(False, seq, conf, warnings, errors, metadata, trusted=False)
+        if seq not in {"T1"}:
+            warnings.append(
+                f"DICOM sequence '{seq}' is not confirmed T1; 2D triage output is untrusted.",
+            )
+        return ValidationResult(True, seq, conf, warnings, errors, metadata, trusted=False)
 
     if ext in (".jpg", ".jpeg", ".png") or low.endswith((".jpg", ".jpeg", ".png")):
         ok, ims = _validate_image_2d(file_bytes)
         if not ok:
-            return ValidationResult(False, "unknown", 0.0, [], ims, {})
+            return ValidationResult(False, "unknown", 0.0, [], ims, {}, trusted=False)
         warnings.extend(ims)
-        return ValidationResult(True, "image", 1.0, warnings, [], {})
+        warnings.append("MOTION_INDETERMINATE: motion cannot be assessed on a raster screenshot.")
+        return ValidationResult(True, "image", 1.0, warnings, [], {"source": "raster"}, trusted=False)
 
     errors.append(f"Unsupported format for classifier: '{ext}'. Use JPG/PNG/DICOM.")
     return ValidationResult(False, "unknown", 0.0, [], errors, {})

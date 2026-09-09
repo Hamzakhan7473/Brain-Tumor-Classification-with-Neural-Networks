@@ -19,6 +19,35 @@ export type PredictResponse = {
   inference_time_s?: number | null;
 };
 
+export type ClinicalValidation = {
+  passed: boolean;
+  invented_numbers: string[];
+  invented_entities: string[];
+  omitted_findings: string[];
+  contradicted_claims?: string[];
+  unaddressed_claims?: string[];
+  independent_visual_claims?: string[];
+  used_fallback: boolean;
+  regenerated: boolean;
+  violations?: Array<{ type: string; value: string; severity: string; tier?: string }>;
+  chain_of_verification?: {
+    passed: boolean;
+    human_review_required: boolean;
+    tier_0_failure: boolean;
+    claims: Array<{ claim: string; status: string; rationale: string }>;
+    contradicted_claims: string[];
+    not_addressed_claims: string[];
+  } | null;
+};
+
+export type ContentProvenance = {
+  generated_by: string;
+  prompt_template_version: string;
+  grounding_score?: number | null;
+  validator_status: "passed" | "warnings" | "failed" | string;
+  validator_warnings?: string[];
+};
+
 export type ReportResponse = {
   prediction: string;
   confidence: number;
@@ -26,6 +55,8 @@ export type ReportResponse = {
   study_instance_uid?: string | null;
   site_id?: string | null;
   shadow_mode: boolean;
+  validation?: ClinicalValidation | null;
+  provenance?: ContentProvenance | null;
 };
 
 export type CaseSummary = {
@@ -214,15 +245,65 @@ export async function generateReport(input: {
   return (await res.json()) as ReportResponse;
 }
 
-export type ClinicalVerdict = "agree" | "partial" | "disagree";
+export type ExplanationResponse = {
+  prediction: string;
+  confidence: number;
+  explanation: string;
+  study_instance_uid?: string | null;
+  site_id?: string | null;
+  shadow_mode: boolean;
+  validation?: ClinicalValidation | null;
+  provenance?: ContentProvenance | null;
+};
+
+export async function explainScan(input: {
+  file: File;
+  model: string;
+  study_instance_uid?: string;
+  site_id?: string;
+  shadow_mode: boolean;
+}): Promise<ExplanationResponse> {
+  const url = apiURL("/explain");
+  url.searchParams.set("model", input.model);
+
+  const fd = new FormData();
+  fd.append("file", input.file, input.file.name);
+  if (input.study_instance_uid) fd.append("study_instance_uid", input.study_instance_uid);
+  if (input.site_id) fd.append("site_id", input.site_id);
+  fd.append("shadow_mode", input.shadow_mode ? "true" : "false");
+
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: buildAuthHeaders(),
+    body: fd,
+  });
+
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as ExplanationResponse;
+}
+
+export type ClinicalVerdict =
+  | "agree"
+  | "overcall"
+  | "undercall"
+  | "wrong_anatomy"
+  | "wrong_delta"
+  | "useless"
+  | "partial"
+  | "disagree";
 
 export async function submitStructuredClinicalFeedback(input: {
   case_id: string;
+  audit_id: string;
   verdict: ClinicalVerdict;
+  codes?: ClinicalVerdict[];
   ground_truth?: Record<string, unknown> | null;
   error_categories?: string[];
   clinical_notes?: string | null;
   time_spent_s: number;
+  measurements_unedited?: boolean;
+  ingest_at?: string | null;
+  draft_ready_at?: string | null;
   reviewer_display_name?: string | null;
   reviewer_role?: string | null;
   credentials?: string | null;
@@ -235,11 +316,16 @@ export async function submitStructuredClinicalFeedback(input: {
     },
     body: JSON.stringify({
       case_id: input.case_id,
+      audit_id: input.audit_id,
       verdict: input.verdict,
+      codes: input.codes ?? [input.verdict],
       ground_truth: input.ground_truth ?? null,
       error_categories: input.error_categories ?? [],
       clinical_notes: input.clinical_notes ?? null,
       time_spent_s: input.time_spent_s,
+      measurements_unedited: input.measurements_unedited ?? true,
+      ingest_at: input.ingest_at ?? null,
+      draft_ready_at: input.draft_ready_at ?? null,
       reviewer_display_name: input.reviewer_display_name ?? null,
       reviewer_role: input.reviewer_role ?? null,
       credentials: input.credentials ?? null,
@@ -311,7 +397,12 @@ export type PublicCapabilities = {
   models_3d: string[];
   mongo_configured: boolean;
   llm_configured: boolean;
-  auth_required_globally: boolean;
+  /** Active LLM provider ("bedrock" | "gemini"), empty string when none configured. */
+  llm_provider: "bedrock" | "gemini" | "";
+    bedrock_configured: boolean;
+    /** Second-pass claim verification (ENABLE_CHAIN_OF_VERIFICATION). */
+    chain_of_verification?: boolean;
+    auth_required_globally: boolean;
 };
 
 export type FeaturesCatalogResponse = {
@@ -337,6 +428,66 @@ export async function fetchPublicFeatures(): Promise<FeaturesCatalogResponse | n
 
 export type ReportDraftDoc = Record<string, unknown>;
 
+export type BicrRole = "reader1" | "reader2" | "adjudicator";
+
+export async function enrollBicrCase(body: {
+  case_id: string;
+  subject_id?: string;
+  visit?: string;
+  timepoint?: string;
+  blind_model?: boolean;
+}): Promise<Record<string, unknown>> {
+  const res = await fetch(apiUrl("/bicr/cases/enroll"), {
+    method: "POST",
+    headers: { ...buildAuthHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as Record<string, unknown>;
+}
+
+export async function getBicrCase(caseId: string, role: BicrRole): Promise<Record<string, unknown>> {
+  const q = new URLSearchParams({ role });
+  const res = await fetch(apiUrl(`/bicr/cases/${encodeURIComponent(caseId)}?${q}`), {
+    headers: buildAuthHeaders(),
+  });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as Record<string, unknown>;
+}
+
+export async function submitBicrRead(
+  caseId: string,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const res = await fetch(apiUrl(`/bicr/cases/${encodeURIComponent(caseId)}/reads`), {
+    method: "POST",
+    headers: { ...buildAuthHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as Record<string, unknown>;
+}
+
+export async function submitBicrAdjudication(
+  caseId: string,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const res = await fetch(apiUrl(`/bicr/cases/${encodeURIComponent(caseId)}/adjudicate`), {
+    method: "POST",
+    headers: { ...buildAuthHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as Record<string, unknown>;
+}
+
+export async function fetchBicrQueue(role: BicrRole, limit = 50): Promise<Record<string, unknown>> {
+  const q = new URLSearchParams({ role, limit: String(limit) });
+  const res = await fetch(apiUrl(`/bicr/queue?${q}`), { headers: buildAuthHeaders() });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as Record<string, unknown>;
+}
+
 export async function createReportDraft(body: {
   case_id: string;
   template_id: string;
@@ -344,6 +495,7 @@ export async function createReportDraft(body: {
   clinical_context?: Record<string, unknown>;
   scanner_field_strength?: string;
   prior_studies?: string;
+  prior_model_run?: Record<string, unknown>;
 }): Promise<ReportDraftDoc> {
   const res = await fetch(apiUrl("/report/draft"), {
     method: "POST",
@@ -390,6 +542,40 @@ export async function regenerateReportDraftSection(
   );
   if (!res.ok) throw new Error(await readErrorMessage(res));
   return (await res.json()) as { ok: boolean; version: number };
+}
+
+export async function attestReportDraft(
+  reportId: string,
+  body: { attested_by: string; attestation_text: string },
+): Promise<{ ok: boolean; attested_by: string; attested_at: string; audit_id: string; already_attested?: boolean }> {
+  const res = await fetch(apiUrl(`/report/${encodeURIComponent(reportId)}/attest`), {
+    method: "POST",
+    headers: { ...buildAuthHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as {
+    ok: boolean;
+    attested_by: string;
+    attested_at: string;
+    audit_id: string;
+    already_attested?: boolean;
+  };
+}
+
+export async function attestGeneratedContent(body: {
+  attested_by: string;
+  attestation_text: string;
+  content_kind?: "report" | "explanation";
+  content_sha256?: string;
+}): Promise<{ ok: boolean; audit_id: string; attested_at: string }> {
+  const res = await fetch(apiUrl("/report/attest-content"), {
+    method: "POST",
+    headers: { ...buildAuthHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  return (await res.json()) as { ok: boolean; audit_id: string; attested_at: string };
 }
 
 export async function signReportDraft(

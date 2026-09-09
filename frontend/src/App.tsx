@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import UploadPredict from "./pages/UploadPredict";
 import GenerateReport from "./pages/GenerateReport";
 import ClinicalFeedback from "./pages/ClinicalFeedback";
+import BicrReview from "./pages/BicrReview";
 import Dashboard from "./pages/Dashboard";
 import CaseDetail from "./pages/CaseDetail";
 import AppShell from "./components/AppShell";
@@ -217,6 +218,14 @@ function App() {
         element={
           <AppShell>
             <ClinicalFeedback />
+          </AppShell>
+        }
+      />
+      <Route
+        path="/bicr-review"
+        element={
+          <AppShell>
+            <BicrReview />
           </AppShell>
         }
       />

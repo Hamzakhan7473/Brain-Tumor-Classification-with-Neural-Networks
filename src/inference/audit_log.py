@@ -11,6 +11,15 @@ from typing import Optional
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _llm_versions_or_empty(prompt_template_name: str) -> dict:
+    try:
+        from src.llm.versions import llm_version_manifest
+
+        return llm_version_manifest(prompt_template_name)
+    except Exception:
+        return {}
+
+
 def _audit_dir() -> Path:
     d = Path(_PROJECT_ROOT / "logs" / "audit")
     d.mkdir(parents=True, exist_ok=True)
@@ -207,6 +216,7 @@ def log_docs_assistant_query(
             "answer_hash": answer_hash,
             "citation_count": citation_count,
             "confidence": confidence,
+            "llm_versions": _llm_versions_or_empty("docs_assistant"),
         },
         "schema_version": "1.0",
     }
@@ -240,4 +250,56 @@ def append_signoff_event(
     with open(path, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(record, default=str) + "\n")
     return rid
+
+
+def log_llm_generation(
+    *,
+    user_id: Optional[str],
+    prompt_template_name: str,
+    grounding_payload: Optional[dict] = None,
+    gate: object = None,
+    output_text: Optional[str] = None,
+    model_id: Optional[str] = None,
+    extra: Optional[dict] = None,
+) -> str:
+    """
+    Append-only JSONL for one LLM generation (event_type=llm_generation).
+
+    Captures the version pin (model, prompt template, guardrail), a compact
+    grounding payload (or hash), validator results from Prompts 1/2/4, and a
+    hashed/truncated copy of the final text. Images are never stored.
+    """
+    from src.llm.versions import (
+        compact_grounding,
+        compact_output,
+        llm_version_manifest,
+        validator_snapshot,
+    )
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    versions = llm_version_manifest(prompt_template_name, model_id=model_id)
+    payload = {
+        **versions,
+        "grounding": compact_grounding(grounding_payload),
+        "validators": validator_snapshot(gate),
+        "output": compact_output(output_text),
+    }
+    if extra:
+        payload["extra"] = extra
+    audit_id = hashlib.sha256(
+        f"{timestamp}llm_generation{json.dumps(payload, sort_keys=True, default=str)}".encode()
+    ).hexdigest()[:16]
+    record = {
+        "audit_id": audit_id,
+        "timestamp_utc": timestamp,
+        "event_type": "llm_generation",
+        "user_id": user_id,
+        "payload": payload,
+        "schema_version": "1.1",
+    }
+    log_path = _audit_dir() / "llm_generation.jsonl"
+    with open(log_path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, default=str) + "\n")
+    return audit_id
+
 

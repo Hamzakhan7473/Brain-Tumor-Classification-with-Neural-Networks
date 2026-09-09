@@ -34,10 +34,18 @@ def _ensure_dummy_keras_weights() -> None:
 
 _ensure_dummy_keras_weights()
 
+from src.api.attestation import attestation_text_for  # noqa: E402
 from src.api.main import app  # noqa: E402
 from src.llm.report_builder import ReportBuilder  # noqa: E402
 
 HEADERS = {"X-API-Key": "test-key"}
+
+
+def _attest_body(report: dict, attested_by: str = "Dr. Test") -> dict:
+    return {
+        "attested_by": attested_by,
+        "attestation_text": attestation_text_for(report["model_run_id"]),
+    }
 
 
 @pytest.fixture
@@ -53,10 +61,14 @@ def wmh_model_run():
         "model_name": "unet_3d_wmh",
         "model_version": "v1",
         "confidence": 0.42,
+        "ingest_path": "clinical",
         "wmh": {
             "volume_cc": 10.9,
             "lesion_voxels": 1200,
             "age_matched_percentile": "75th percentile",
+            "volume_cc_periventricular": 4.2,
+            "volume_cc_deep_subcortical": 5.1,
+            "volume_cc_infratentorial": 1.6,
         },
     }
 
@@ -79,7 +91,14 @@ def signed_draft_id(client, wmh_model_run):
         json={"case_id": "1.2.3.4.6", "template_id": "brain_mri_wmh_svd", "model_run": wmh_model_run},
         headers=HEADERS,
     )
-    rid = r.json()["report_id"]
+    draft = r.json()
+    rid = draft["report_id"]
+    at = client.post(
+        f"/report/{rid}/attest",
+        json=_attest_body(draft),
+        headers=HEADERS,
+    )
+    assert at.status_code == 200, at.text
     rs = client.post(
         f"/report/{rid}/sign",
         json={
@@ -113,6 +132,12 @@ def test_draft_measurements_match_model_output(client, wmh_model_run):
     wmh = next(m for m in measurements if m["id"] == "wmh_volume_cc")
     assert wmh["value"] == 10.9
     assert wmh["audit_ref"] is not None
+    pv = next(m for m in measurements if m["id"] == "wmh_volume_periventricular_cc")
+    assert pv["value"] == 4.2
+    deep = next(m for m in measurements if m["id"] == "wmh_volume_deep_subcortical_cc")
+    assert deep["value"] == 5.1
+    infra = next(m for m in measurements if m["id"] == "wmh_volume_infratentorial_cc")
+    assert infra["value"] == 1.6
 
 
 def test_section_edit_creates_history(client, fresh_draft_id):
@@ -140,6 +165,13 @@ def test_signed_report_is_immutable(client, signed_draft_id):
 
 
 def test_sign_off_creates_audit_with_hash(client, fresh_draft_id):
+    draft = client.get(f"/report/{fresh_draft_id}", headers=HEADERS).json()
+    at = client.post(
+        f"/report/{fresh_draft_id}/attest",
+        json=_attest_body(draft),
+        headers=HEADERS,
+    )
+    assert at.status_code == 200, at.text
     r = client.post(
         f"/report/{fresh_draft_id}/sign",
         json={
@@ -178,3 +210,99 @@ def test_pdf_export(client, signed_draft_id):
     assert r.status_code in (200, 503)
     if r.status_code == 200:
         assert r.content[:4] == b"%PDF"
+
+
+def _attest_text_for_id(report_id: str, client) -> str:
+    draft = client.get(f"/report/{report_id}", headers=HEADERS).json()
+    return attestation_text_for(draft["model_run_id"])
+
+
+def test_draft_includes_content_provenance(client, wmh_model_run):
+    r = client.post(
+        "/report/draft",
+        json={"case_id": "1.2.3.4.prov", "template_id": "brain_mri_wmh_svd", "model_run": wmh_model_run},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200, r.text
+    prov = r.json()["provenance"]
+    assert prov["generated_by"]
+    assert prov["prompt_template_version"]
+    assert prov["validator_status"] in ("passed", "warnings", "failed")
+    assert isinstance(prov.get("validator_warnings"), list)
+
+
+def test_attest_rejects_incomplete_body(client, fresh_draft_id):
+    empty = client.post(f"/report/{fresh_draft_id}/attest", json={}, headers=HEADERS)
+    assert empty.status_code == 422
+    missing_text = client.post(
+        f"/report/{fresh_draft_id}/attest",
+        json={"attested_by": "Dr. Test"},
+        headers=HEADERS,
+    )
+    assert missing_text.status_code == 422
+    missing_name = client.post(
+        f"/report/{fresh_draft_id}/attest",
+        json={"attestation_text": _attest_text_for_id(fresh_draft_id, client)},
+        headers=HEADERS,
+    )
+    assert missing_name.status_code == 422
+
+
+def test_attest_rejects_wrong_statement(client, fresh_draft_id):
+    r = client.post(
+        f"/report/{fresh_draft_id}/attest",
+        json={"attested_by": "Dr. Test", "attestation_text": "looks fine"},
+        headers=HEADERS,
+    )
+    assert r.status_code == 400
+    assert "attestation_text" in str(r.json().get("detail", "")).lower()
+
+
+def test_sign_pdf_fhir_reject_unattested(client, fresh_draft_id):
+    sign = client.post(
+        f"/report/{fresh_draft_id}/sign",
+        json={
+            "signer_name": "Dr. Test",
+            "signer_role": "neuroradiologist",
+            "acknowledged_disclaimer": True,
+        },
+        headers=HEADERS,
+    )
+    assert sign.status_code == 400
+    assert "attest" in str(sign.json().get("detail", "")).lower()
+
+    pdf = client.get(f"/report/{fresh_draft_id}/pdf", headers=HEADERS)
+    assert pdf.status_code == 403
+    assert "signed" in str(pdf.json().get("detail", "")).lower()
+
+    fhir = client.get(f"/report/{fresh_draft_id}/fhir", headers=HEADERS)
+    assert fhir.status_code == 403
+    assert "signed" in str(fhir.json().get("detail", "")).lower()
+
+
+def test_attest_is_logged_to_audit_trail(client, fresh_draft_id):
+    import json
+    from pathlib import Path
+
+    r = client.post(
+        f"/report/{fresh_draft_id}/attest",
+        json={
+            "attested_by": "Dr. Test",
+            "attestation_text": _attest_text_for_id(fresh_draft_id, client),
+        },
+        headers=HEADERS,
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["ok"] is True
+    assert data["attested_by"] == "Dr. Test"
+    assert data["attested_at"]
+    audit_id = data["audit_id"]
+    log_path = Path(__file__).resolve().parents[1] / "logs" / "audit" / "report_draft.jsonl"
+    assert log_path.exists()
+    recs = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    match = next(x for x in reversed(recs) if x.get("audit_id") == audit_id)
+    assert match["event_type"] == "report_attested"
+    assert match["payload"]["attested_by"] == "Dr. Test"
+    assert match["payload"]["report_id"] == fresh_draft_id
+    assert match.get("timestamp_utc") or match["payload"].get("timestamp_utc")

@@ -40,10 +40,7 @@ html {
 body {
   margin: 0;
   font-family: var(--sans);
-  background:
-    radial-gradient(circle at top left, rgba(37, 196, 143, 0.12), transparent 60%),
-    radial-gradient(circle at bottom right, rgba(15, 23, 42, 0.06), transparent 60%),
-    #f6f9f7;
+  background: #fafafa;
   color: var(--ink);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
@@ -317,6 +314,26 @@ nav {
   background: linear-gradient(180deg, #1ed197 0%, #0f8c5a 100%);
   box-shadow: 0 10px 26px rgba(16, 163, 106, 0.4);
   transform: translateY(-1px);
+}
+
+/* Links styled as buttons — beat a:visited { color: inherit } */
+a.btn-primary,
+a.btn-primary:visited,
+a.btn-primary:hover,
+a.btn-primary:active {
+  color: var(--white);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+a.btn,
+a.btn:visited,
+a.btn:hover,
+a.btn:active {
+  color: var(--ink);
+  text-decoration: none;
 }
 
 /* HERO */

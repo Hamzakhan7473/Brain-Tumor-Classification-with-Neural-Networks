@@ -5,6 +5,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "test": "node --test src/components/ui/provenance.node.test.mjs",
     "demo": "bash ../scripts/demo_local.sh",
     "lint": "echo \"(optional)\""
   },

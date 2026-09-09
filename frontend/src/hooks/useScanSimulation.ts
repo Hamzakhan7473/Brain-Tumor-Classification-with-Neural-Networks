@@ -99,22 +99,32 @@ function coerceWmh(raw: unknown): WMHResult | undefined {
     risk_level: rk,
     threshold_used: num("threshold_used", 0.5),
     note: str("note", ""),
+    volume_cc_periventricular:
+      typeof o["volume_cc_periventricular"] === "number" ? (o["volume_cc_periventricular"] as number) : undefined,
+    volume_cc_deep_subcortical:
+      typeof o["volume_cc_deep_subcortical"] === "number" ? (o["volume_cc_deep_subcortical"] as number) : undefined,
+    volume_cc_infratentorial:
+      typeof o["volume_cc_infratentorial"] === "number" ? (o["volume_cc_infratentorial"] as number) : undefined,
   };
 }
 
 function buildGuardrails(r: PredictBackendResponse): ScanGuardrailsMeta | undefined {
   const warns = r.warnings ?? [];
   const hasAudit = Boolean(r.audit_id && String(r.audit_id).length > 0);
-  if (!warns.length && !hasAudit && !r.validation && !r.uncertainty) {
+  if (!warns.length && !hasAudit && !r.validation && !r.uncertainty && !r.qc) {
     return undefined;
   }
+  const validation = {
+    ...(r.validation || {}),
+    ...(r.qc ? { qc: r.qc, qc_overall: r.qc.overall } : {}),
+  };
   return {
     warnings: warns,
     auditId: r.audit_id ?? null,
     auditTimestamp: r.audit_timestamp ?? null,
     disposition: r.disposition,
     radiologistActionRequired: r.radiologist_action_required ?? null,
-    validation: r.validation,
+    validation: Object.keys(validation).length ? validation : r.validation,
     uncertainty: r.uncertainty,
   };
 }

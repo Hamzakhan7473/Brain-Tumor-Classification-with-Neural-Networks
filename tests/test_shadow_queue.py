@@ -117,18 +117,30 @@ def test_shadow_feedback_creates_audit_log(client, shadow_mongo_ok, monkeypatch)
     async def _mongo_insert(_payload):
         return None
 
+    stored: List[Dict[str, Any]] = []
+
+    async def _insert(payload: Dict[str, Any]) -> None:
+        stored.append(payload)
+
     monkeypatch.setattr("src.shadow.db.submit_shadow_feedback", _submit)
     monkeypatch.setattr("src.shadow.http_handlers.log_shadow_workflow_event", _log)
     monkeypatch.setattr("src.db.repositories.insert_audit_log_event", _mongo_insert)
+    monkeypatch.setattr("src.db.repositories.insert_structured_clinical_feedback", _insert)
 
     r = client.post(
         "/shadow/cases/test_uid_001/feedback",
-        json={"verdict": "disagree", "notes": "actually severe"},
+        json={"audit_id": "studyresultjoin01", "verdict": "disagree", "notes": "actually severe"},
         headers=HEADERS,
     )
     assert r.status_code == 200, r.text
+    assert r.json().get("audit_id") == "studyresultjoin01"
+    assert r.json().get("feedback_id", "").startswith("fb_")
+    assert "retrain" not in str(r.json()).lower()
     assert logs and logs[0]["event_type"] == "shadow_feedback_submitted"
-    assert logs[0]["payload"]["verdict"] == "disagree"
+    assert logs[0]["payload"]["verdict"] == "undercall"
+    assert logs[0]["payload"]["verdict_raw"] == "disagree"
+    assert stored and stored[0]["audit_id"] == "studyresultjoin01"
+    assert stored[0]["feedback_event"]["codes"] == ["undercall"]
 
 
 def test_shadow_feedback_blocked_on_non_shadow_case(client, shadow_mongo_ok, monkeypatch):
@@ -137,7 +149,11 @@ def test_shadow_feedback_blocked_on_non_shadow_case(client, shadow_mongo_ok, mon
 
     monkeypatch.setattr("src.shadow.db.submit_shadow_feedback", _submit)
 
-    r = client.post("/shadow/cases/x/feedback", json={"verdict": "agree"}, headers=HEADERS)
+    r = client.post(
+        "/shadow/cases/x/feedback",
+        json={"audit_id": "studyresultjoin01", "verdict": "agree"},
+        headers=HEADERS,
+    )
     assert r.status_code == 400
     detail = r.json().get("detail", "")
     assert "non-shadow" in str(detail).lower()

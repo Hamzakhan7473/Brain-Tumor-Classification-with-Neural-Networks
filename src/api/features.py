@@ -28,6 +28,9 @@ class Capabilities(BaseModel):
     models_3d: list[str] = Field(default_factory=list)
     mongo_configured: bool = False
     llm_configured: bool = False
+    llm_provider: str = ""
+    bedrock_configured: bool = False
+    chain_of_verification: bool = False
     auth_required_globally: bool = False
 
 
@@ -92,15 +95,34 @@ def _capabilities() -> Capabilities:
         models_3d = []
 
     mongo_configured = bool((os.environ.get("MONGODB_URI") or "").strip())
-    llm_configured = bool((os.environ.get("GOOGLE_API_KEY") or "").strip())
+    bedrock_configured = bool((os.environ.get("BEDROCK_MODEL_ID") or "").strip())
+    gemini_configured = bool((os.environ.get("GOOGLE_API_KEY") or "").strip())
+    llm_configured = bedrock_configured or gemini_configured
+    llm_provider = ""
+    if llm_configured:
+        try:
+            from src.llm.client import resolve_default_provider
+
+            llm_provider = resolve_default_provider()
+        except Exception:
+            llm_provider = "bedrock" if bedrock_configured else "gemini"
     raw_keys = os.environ.get("API_KEYS") or os.environ.get("API_KEY") or ""
     auth_required = bool(raw_keys.strip())
+    cov = (os.environ.get("ENABLE_CHAIN_OF_VERIFICATION") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
     return Capabilities(
         models_2d=models_2d,
         models_3d=models_3d,
         mongo_configured=mongo_configured,
         llm_configured=llm_configured,
+        llm_provider=llm_provider,
+        bedrock_configured=bedrock_configured,
+        chain_of_verification=cov,
         auth_required_globally=auth_required,
     )
 

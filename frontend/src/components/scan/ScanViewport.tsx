@@ -24,6 +24,11 @@ type ScanViewportProps = {
   progressPct: number;
   findings: ScanFindings | null;
   isSegmentationModel: boolean;
+  /** Real study / file labels — never invent a patient ID. */
+  studyLabel?: string;
+  fileLabel?: string;
+  /** From clinical context when complete, e.g. "M · 24y". */
+  subjectLabel?: string;
 };
 
 /** Lightweight acquisition placeholder — path outline only (no ellipses / spot shapes). */
@@ -69,6 +74,9 @@ export default function ScanViewport({
   progressPct,
   findings,
   isSegmentationModel,
+  studyLabel,
+  fileLabel,
+  subjectLabel,
 }: ScanViewportProps) {
   const reduced = usePrefersReducedMotion();
   const mode = pipelineMode(phase);
@@ -107,9 +115,7 @@ export default function ScanViewport({
 
   const slicesTotal = isSegmentationModel ? 96 : 48;
   const safeSliceIdx = Math.min(sliceIndex, slicesTotal);
-
   const modalityLabel = isSegmentationModel ? "FLAIR · AX" : "T1 · AX";
-  const seriesSlices = `${slicesTotal} slices`;
 
   function cornerHud(c: "tl" | "tr" | "bl" | "br"): React.CSSProperties {
     const pad = 10;
@@ -207,6 +213,7 @@ export default function ScanViewport({
   if (isError) statusLabel = "error";
   else if (isScanning && imageUrl) statusLabel = "analyzing";
   else if (mode === "complete" && imageUrl) statusLabel = "complete";
+  else if (imageUrl) statusLabel = "preview";
 
   const statusColor =
     isError ? "var(--green-900)" : isScanning ? "var(--green-400)" : "var(--green-400)";
@@ -214,10 +221,13 @@ export default function ScanViewport({
 
   const sequenceReadout = isSegmentationModel ? "FLAIR · TE 120 · TR 9000" : "T1 · SE · TR 500";
 
-  let progressCaption = "Ready";
+  let progressCaption = "Preview";
+  if (!file) progressCaption = "No scan loaded";
   if (isScanning) progressCaption = "Pipeline active";
   if (mode === "complete") progressCaption = "Acquisition complete";
   if (isError) progressCaption = "Pipeline halted";
+
+  const toolbarId = studyLabel || fileLabel || "No scan attached";
 
   return (
     <div className="scan-viewport-shell ns-bg-card-solid ns-card-frame rounded-ios-lg ios-soft-shadow overflow-hidden scan-pacs-root">
@@ -235,21 +245,23 @@ export default function ScanViewport({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
-          <span
-            className="modality-pill"
-            style={{
-              fontSize: 10,
-              fontWeight: 600,
-              background: "var(--green-900)",
-              color: "var(--white)",
-              padding: "2px 7px",
-              borderRadius: 3,
-              letterSpacing: "0.4px",
-              flexShrink: 0,
-            }}
-          >
-            {modalityLabel}
-          </span>
+          {file ? (
+            <span
+              className="modality-pill"
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                background: "var(--modern-primary, #09090b)",
+                color: "#fff",
+                padding: "2px 7px",
+                borderRadius: 3,
+                letterSpacing: "0.4px",
+                flexShrink: 0,
+              }}
+            >
+              {modalityLabel}
+            </span>
+          ) : null}
           <span
             className="patient-id"
             style={{
@@ -261,19 +273,8 @@ export default function ScanViewport({
               textOverflow: "ellipsis",
             }}
           >
-            PID 0xA42E · series 04 · {seriesSlices}
+            {toolbarId}
           </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-          <button type="button" className="tb-btn" aria-label="Window level (demo)">
-            W/L
-          </button>
-          <button type="button" className="tb-btn" aria-label="Invert (demo)">
-            Invert
-          </button>
-          <button type="button" className="tb-btn" aria-label="Reset (demo)">
-            Reset
-          </button>
         </div>
       </div>
 
@@ -311,11 +312,28 @@ export default function ScanViewport({
                 position: "absolute",
                 inset: 0,
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
+                gap: 10,
+                padding: 24,
+                textAlign: "center",
               }}
             >
               <PlaceholderBrain />
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "rgba(255,255,255,0.72)",
+                  letterSpacing: "-0.01em",
+                }}
+              >
+                No scan loaded
+              </div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", maxWidth: 280, lineHeight: 1.45 }}>
+                Attach a file in Step 2, then run inference. The viewer stays empty until a real image is chosen.
+              </div>
             </div>
           )}
 
@@ -367,10 +385,12 @@ export default function ScanViewport({
 
           {showScanChrome && imageUrl ? (
             <>
-              <div style={cornerHud("tl")}>
-                <span style={hudLabel}>Subject</span>
-                <span style={hudValue}>M · 62y</span>
-              </div>
+              {subjectLabel ? (
+                <div style={cornerHud("tl")}>
+                  <span style={hudLabel}>Subject</span>
+                  <span style={hudValue}>{subjectLabel}</span>
+                </div>
+              ) : null}
               <div style={cornerHud("tr")}>
                 <span style={hudLabel}>Slice</span>
                 <span style={hudValue}>
@@ -444,37 +464,43 @@ export default function ScanViewport({
         }}
       >
         <span>{progressCaption}</span>
-        <div
-          style={{
-            flex: 1,
-            margin: "0 12px",
-            height: 3,
-            background: "var(--line)",
-            borderRadius: 2,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              height: "100%",
-              background: "var(--green-600)",
-              width: `${Math.min(100, Math.max(0, progressPct))}%`,
-              transition: reduced ? "none" : "width 0.15s linear",
-              borderRadius: 2,
-            }}
-          />
-        </div>
-        <span
-          style={{
-            fontFeatureSettings: '"tnum"',
-            fontWeight: 600,
-            color: "var(--ink-mid)",
-            minWidth: 36,
-            textAlign: "right",
-          }}
-        >
-          {Math.round(progressPct)}%
-        </span>
+        {file ? (
+          <>
+            <div
+              style={{
+                flex: 1,
+                margin: "0 12px",
+                height: 3,
+                background: "var(--line)",
+                borderRadius: 2,
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  background: "var(--modern-primary, #09090b)",
+                  width: `${Math.min(100, Math.max(0, progressPct))}%`,
+                  transition: reduced ? "none" : "width 0.15s linear",
+                  borderRadius: 2,
+                }}
+              />
+            </div>
+            <span
+              style={{
+                fontFeatureSettings: '"tnum"',
+                fontWeight: 600,
+                color: "var(--ink-mid)",
+                minWidth: 36,
+                textAlign: "right",
+              }}
+            >
+              {Math.round(progressPct)}%
+            </span>
+          </>
+        ) : (
+          <span style={{ fontSize: 11, color: "var(--ink-mute)" }}>Waiting for file</span>
+        )}
       </div>
 
       <style>{`

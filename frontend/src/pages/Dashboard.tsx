@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { CaseSummary, formatApiConnectionHint, getMetrics, listCases, MetricsResponse } from "../api/client";
+import { DashboardInsights, type DashboardInsight } from "../components/ui/DashboardInsights";
+import { DashboardTableSkeleton } from "../components/ui/DashboardSkeleton";
+import { IosLinkButton } from "../components/ui/IosButton";
+import { TRIAGE_BANNER } from "../lib/triageCopy";
+import "./Dashboard.css";
 
 type StoredPrediction = {
   scanBase64: string;
@@ -68,123 +73,197 @@ export default function Dashboard() {
 
   const pending = filteredCases.filter((c) => (c.feedback_status || "pending") === "pending");
 
+  const totalCases = metrics?.total_cases ?? (stored ? 1 : 0);
+  const correctedCount =
+    (metrics?.corrected ?? 0) + (metrics?.unclear ?? 0) ||
+    (stored && (feedbackStatus === "wrong_class" || feedbackStatus === "unclear") ? 1 : 0);
+
+  const insights = useMemo((): DashboardInsight[] => {
+    const list: DashboardInsight[] = [];
+
+    if (pending.length > 0) {
+      list.push({
+        id: "pending-feedback",
+        title: `${pending.length} case${pending.length === 1 ? "" : "s"} need feedback`,
+        description: "Submit radiologist agreement for shadow QA and trial metrics.",
+        to: "/clinical-feedback",
+        cta: "Review now",
+        tone: "action",
+      });
+    }
+
+    if (stored?.study_instance_uid) {
+      list.push({
+        id: "resume-case",
+        title: "Resume last session",
+        description: `${stored.filename || "Scan"} · ${TRIAGE_BANNER}. Suggested class (research): ${stored.prediction?.label || "—"}`,
+        to: `/cases/${encodeURIComponent(stored.study_instance_uid)}`,
+        cta: "Open case",
+      });
+    }
+
+    if (totalCases === 0 && !stored) {
+      list.push({
+        id: "first-upload",
+        title: "Start your first read",
+        description: "Upload a brain MRI or WMH volume to run inference and generate a structured report.",
+        to: "/upload",
+        cta: "Upload scan",
+        tone: "action",
+      });
+    } else {
+      list.push({
+        id: "bicr",
+        title: "BICR dual-read ready",
+        description: "Independent reader slots, adjudication, and time-point lock for trial imaging.",
+        to: "/bicr-review",
+        cta: "Open BICR",
+      });
+    }
+
+    if (correctedCount > 0) {
+      list.push({
+        id: "corrections",
+        title: `${correctedCount} corrected / unclear`,
+        description: "Review disagreement patterns persisted for QA metrics.",
+        to: "/shadow-queue",
+        cta: "Shadow queue",
+        tone: "muted",
+      });
+    }
+
+    return list.slice(0, 3);
+  }, [correctedCount, pending.length, stored, totalCases]);
+
   return (
-    <div className="container" style={{ paddingTop: 88 }}>
-      <h2 style={{ marginBottom: 4 }}>Dashboard</h2>
-      <p style={{ color: "var(--ink-mute)", marginBottom: 16 }}>
-        Recent cases and feedback status across your imaging AI workflows.
-      </p>
+    <div className="dashboard-page">
+      <div className="dashboard-inner">
+        <header className="dashboard-header">
+          <div className="dashboard-header-row">
+            <div>
+              <h1>Dashboard</h1>
+              <p>Actionable overview for imaging AI workflows — press ⌘K to jump anywhere.</p>
+            </div>
+            <div className="dashboard-header-actions">
+              <IosLinkButton to="/upload" variant="primary" className="dashboard-header-btn">
+                New scan
+              </IosLinkButton>
+              <IosLinkButton to="/shadow-queue" variant="ghost" className="dashboard-header-btn">
+                Shadow queue
+              </IosLinkButton>
+            </div>
+          </div>
+        </header>
 
-      <div style={{ display: "flex", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
-        <div className="card" style={{ flex: "1 1 160px", padding: "12px 14px" }}>
-          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.08, color: "var(--ink-mute)" }}>
-            Total cases
-          </div>
-          <div style={{ fontSize: 20, fontWeight: 800 }}>{metrics?.total_cases ?? (stored ? 1 : 0)}</div>
-        </div>
-        <div className="card" style={{ flex: "1 1 160px", padding: "12px 14px" }}>
-          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.08, color: "var(--ink-mute)" }}>
-            Feedback submitted
-          </div>
-          <div style={{ fontSize: 20, fontWeight: 800 }}>{metrics?.total_feedback ?? (feedbackStatus !== "pending" && stored ? 1 : 0)}</div>
-        </div>
-        <div className="card" style={{ flex: "1 1 160px", padding: "12px 14px" }}>
-          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.08, color: "var(--ink-mute)" }}>
-            Corrected / unclear
-          </div>
-          <div style={{ fontSize: 20, fontWeight: 800 }}>{(metrics?.corrected ?? 0) + (metrics?.unclear ?? 0) || (stored && (feedbackStatus === "wrong_class" || feedbackStatus === "unclear") ? 1 : 0)}</div>
-        </div>
-      </div>
+        <DashboardInsights insights={insights} loading={loading} />
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <h3 style={{ margin: 0 }}>Cases</h3>
-          <input
-            type="text"
-            placeholder="Search by study UID or site…"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            style={{ maxWidth: 360 }}
-          />
-          <Link className="btn-primary" to="/upload">
-            New scan
-          </Link>
+        <div className="dashboard-metrics">
+          <div className="dashboard-metric">
+            <div className="dashboard-metric-label">Total cases</div>
+            <div className="dashboard-metric-value">
+              {loading ? "—" : totalCases}
+            </div>
+          </div>
+          <div className="dashboard-metric">
+            <div className="dashboard-metric-label">Feedback submitted</div>
+            <div className="dashboard-metric-value">
+              {loading ? "—" : metrics?.total_feedback ?? (feedbackStatus !== "pending" && stored ? 1 : 0)}
+            </div>
+          </div>
+          <div className="dashboard-metric">
+            <div className="dashboard-metric-label">Corrected / unclear</div>
+            <div className="dashboard-metric-value">{loading ? "—" : correctedCount}</div>
+          </div>
         </div>
-        {error ? <p style={{ color: "crimson", marginTop: 10, whiteSpace: "pre-wrap" }}>{error}</p> : null}
-        {loading ? (
-          <p style={{ color: "var(--ink-mute)", marginTop: 10 }}>Loading cases…</p>
-        ) : (
-          <div style={{ marginTop: 12, overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ textAlign: "left", color: "var(--ink-mute)" }}>
-                  <th style={{ padding: "8px 6px" }}>Study UID</th>
-                  <th style={{ padding: "8px 6px" }}>Site</th>
-                  <th style={{ padding: "8px 6px" }}>Model</th>
-                  <th style={{ padding: "8px 6px" }}>Label</th>
-                  <th style={{ padding: "8px 6px" }}>Conf</th>
-                  <th style={{ padding: "8px 6px" }}>Feedback</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCases.map((c) => (
-                  <tr key={c.study_instance_uid} style={{ borderTop: "1px solid var(--line)" }}>
-                    <td style={{ padding: "10px 6px" }}>
-                      <Link to={`/cases/${c.study_instance_uid}`} style={{ textDecoration: "underline" }}>
-                        {c.study_instance_uid}
-                      </Link>
-                    </td>
-                    <td style={{ padding: "10px 6px" }}>{c.site_id || "—"}</td>
-                    <td style={{ padding: "10px 6px" }}>{c.model || "—"}</td>
-                    <td style={{ padding: "10px 6px" }}>{c.label || "—"}</td>
-                    <td style={{ padding: "10px 6px" }}>
-                      {typeof c.confidence === "number" ? `${(c.confidence * 100).toFixed(1)}%` : "—"}
-                    </td>
-                    <td style={{ padding: "10px 6px" }}>
-                      {(c.feedback_status || "pending") === "pending" ? (
-                        <span style={{ color: "#92400e" }}>Pending</span>
-                      ) : (
-                        <span style={{ color: "#166534" }}>{c.feedback_status}</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {!filteredCases.length ? (
+
+        <section className="dashboard-panel">
+          <div className="dashboard-panel-head">
+            <h2>Cases</h2>
+            <input
+              type="text"
+              className="dashboard-search"
+              placeholder="Search by study UID or site…"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            />
+            <IosLinkButton to="/upload" variant="primary" className="dashboard-panel-btn">
+              New scan
+            </IosLinkButton>
+          </div>
+
+          {error ? <div className="dashboard-error">{error}</div> : null}
+
+          {loading ? (
+            <DashboardTableSkeleton />
+          ) : (
+            <div className="dashboard-table-wrap">
+              <table className="dashboard-table">
+                <thead>
                   <tr>
-                    <td colSpan={6} style={{ padding: "12px 6px", color: "var(--ink-mute)" }}>
-                      No cases found.
-                    </td>
+                    <th>Study UID</th>
+                    <th>Site</th>
+                    <th>Model</th>
+                    <th>Label</th>
+                    <th>Conf</th>
+                    <th>Feedback</th>
                   </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                </thead>
+                <tbody>
+                  {filteredCases.map((c) => (
+                    <tr key={c.study_instance_uid}>
+                      <td>
+                        <Link to={`/cases/${c.study_instance_uid}`}>{c.study_instance_uid}</Link>
+                      </td>
+                      <td>{c.site_id || "—"}</td>
+                      <td>{c.model || "—"}</td>
+                      <td>{c.label || "—"}</td>
+                      <td>{typeof c.confidence === "number" ? `${(c.confidence * 100).toFixed(1)}%` : "—"}</td>
+                      <td>
+                        {(c.feedback_status || "pending") === "pending" ? (
+                          <span className="dashboard-status-pending">Pending</span>
+                        ) : (
+                          <span className="dashboard-status-done">{c.feedback_status}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {!filteredCases.length ? (
+                    <tr>
+                      <td colSpan={6} className="dashboard-empty">
+                        No cases found.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
 
-      <div className="card">
-        <h3 style={{ marginTop: 0, marginBottom: 8 }}>Pending feedback</h3>
-        {!pending.length ? (
-          <p style={{ color: "var(--ink-mute)" }}>No pending cases.</p>
-        ) : (
-          <ul style={{ marginLeft: 16 }}>
-            {pending.slice(0, 8).map((c) => (
-              <li key={c.study_instance_uid} style={{ marginBottom: 6 }}>
-                <Link to={`/cases/${c.study_instance_uid}`} style={{ textDecoration: "underline" }}>
-                  {c.study_instance_uid}
-                </Link>{" "}
-                <span style={{ color: "var(--ink-mute)" }}>· {c.site_id || "—"} · {c.label || "—"}</span>
-                <span style={{ marginLeft: 8 }}>
-                  <Link to="/clinical-feedback" className="btn" style={{ padding: "4px 10px", fontSize: 12 }}>
+        <section className="dashboard-panel">
+          <h2 className="dashboard-panel-subtitle">Pending feedback</h2>
+          {!pending.length ? (
+            <p className="dashboard-muted">No pending cases.</p>
+          ) : (
+            <ul className="dashboard-pending-list">
+              {pending.slice(0, 8).map((c) => (
+                <li key={c.study_instance_uid} className="dashboard-pending-item">
+                  <div className="dashboard-pending-meta">
+                    <Link to={`/cases/${c.study_instance_uid}`}>{c.study_instance_uid}</Link>
+                    <span>
+                      {" "}
+                      · {c.site_id || "—"} · {c.label || "—"}
+                    </span>
+                  </div>
+                  <IosLinkButton to="/clinical-feedback" variant="secondary" size="sm" className="dashboard-panel-btn">
                     Open feedback
-                  </Link>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+                  </IosLinkButton>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
     </div>
   );
 }
-

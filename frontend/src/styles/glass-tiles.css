@@ -1,0 +1,138 @@
+/* Workflow tiles — minimalist neutral squircles (no gradients, no tints) */
+
+.glass-tile-panel {
+  position: relative;
+  border-radius: 24px;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.glass-tile-bg {
+  display: none;
+}
+
+.glass-tile-title {
+  margin: 0 0 14px;
+  font-family: var(--sans, system-ui, sans-serif);
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--modern-ink, #18181b);
+}
+
+.glass-tile-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.glass-tile-row::-webkit-scrollbar {
+  height: 4px;
+}
+
+.glass-tile-row::-webkit-scrollbar-thumb {
+  background: var(--modern-border, #e4e4e7);
+  border-radius: 999px;
+}
+
+/* Tile — link or button */
+.glass-tile,
+button.glass-tile {
+  flex: 0 0 92px;
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 12px 8px;
+  border-radius: 18px;
+  text-decoration: none;
+  color: var(--modern-ink, #18181b);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  font-family: var(--sans, system-ui, sans-serif);
+  background: var(--modern-surface, #ffffff);
+  border: 1px solid var(--modern-border, #e4e4e7);
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+a.glass-tile:visited {
+  color: var(--modern-ink, #18181b);
+}
+
+.glass-tile svg {
+  opacity: 0.75;
+  flex-shrink: 0;
+}
+
+.glass-tile:hover:not(:disabled) {
+  border-color: var(--modern-border-strong, #d4d4d8);
+  background: var(--modern-hover, #f4f4f5);
+}
+
+.glass-tile:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.glass-tile:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.glass-tile span {
+  text-align: center;
+  line-height: 1.2;
+  max-width: 100%;
+}
+
+/* Variant sizing */
+.glass-tile-panel--compact .glass-tile,
+.glass-tile-panel--compact button.glass-tile,
+.glass-tile-panel--inline .glass-tile,
+.glass-tile-panel--inline button.glass-tile {
+  flex: 0 0 82px;
+  border-radius: 16px;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.glass-tile-panel--app {
+  margin-bottom: 16px;
+}
+
+.glass-tile-panel--inline {
+  margin-bottom: 12px;
+}
+
+/* Persistent shortcut bar on every in-app screen */
+.app-shell-tilebar {
+  max-width: 1160px;
+  margin: 0 auto 4px;
+  padding: 0 24px;
+}
+
+.app-shell-tilebar .glass-tile-panel--app {
+  margin-bottom: 12px;
+}
+
+.app-shell-tilebar .glass-tile,
+.app-shell-tilebar button.glass-tile {
+  flex: 0 0 88px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass-tile {
+    transition: none;
+  }
+}

@@ -1,5 +1,6 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { AppPage } from "../components/layout/AppPage";
+import { IosButton, IosLinkButton } from "../components/ui/IosButton";
 
 type AuthRow = {
   id: string;
@@ -31,37 +32,31 @@ const mockAuths: AuthRow[] = [
 
 export default function AuthsQueue() {
   return (
-    <div className="container">
-      <h2 style={{ marginTop: 16 }}>Prior authorizations</h2>
-      <p style={{ color: "var(--ink-mute)", marginTop: 4 }}>
-        Queue of imaging prior authorizations with status and SLA visibility.
-      </p>
-
-      <div className="card" style={{ marginTop: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+    <AppPage
+      title="Prior authorizations"
+      subtitle="Queue of imaging prior authorizations with status and SLA visibility."
+    >
+      <div className="card">
+        <div className="app-toolbar">
           <div>
-            <div style={{ fontWeight: 800 }}>Worklist</div>
-            <div style={{ fontSize: 13, color: "var(--ink-mute)", marginTop: 4 }}>
+            <div className="app-card-title">Worklist</div>
+            <div className="app-card-sub">
               Total: {mockAuths.length} · Approaching SLA (CMS 7d/72h rules) highlighted in red.
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn" type="button">
-              New auth
-            </button>
-          </div>
+          <IosButton variant="secondary">New auth</IosButton>
         </div>
 
-        <div style={{ marginTop: 10, overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <div className="app-table-wrap">
+          <table className="app-table">
             <thead>
-              <tr style={{ textAlign: "left", color: "var(--ink-mute)" }}>
-                <th style={{ padding: "6px 4px" }}>Patient</th>
-                <th style={{ padding: "6px 4px" }}>Payer</th>
-                <th style={{ padding: "6px 4px" }}>Service line</th>
-                <th style={{ padding: "6px 4px" }}>Status</th>
-                <th style={{ padding: "6px 4px" }}>SLA remaining</th>
-                <th style={{ padding: "6px 4px" }}>Actions</th>
+              <tr>
+                <th>Patient</th>
+                <th>Payer</th>
+                <th>Service line</th>
+                <th>Status</th>
+                <th>SLA remaining</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -69,23 +64,17 @@ export default function AuthsQueue() {
                 const nearBreach = a.slaHoursRemaining <= 48;
                 return (
                   <tr key={a.id}>
-                    <td style={{ padding: "6px 4px" }}>{a.patient}</td>
-                    <td style={{ padding: "6px 4px" }}>{a.payer}</td>
-                    <td style={{ padding: "6px 4px" }}>{a.serviceLine}</td>
-                    <td style={{ padding: "6px 4px" }}>{a.status}</td>
-                    <td
-                      style={{
-                        padding: "6px 4px",
-                        color: nearBreach ? "#b91c1c" : "inherit",
-                        fontWeight: nearBreach ? 700 : 400,
-                      }}
-                    >
+                    <td>{a.patient}</td>
+                    <td>{a.payer}</td>
+                    <td>{a.serviceLine}</td>
+                    <td>{a.status}</td>
+                    <td className={nearBreach ? "app-text-error" : undefined} style={{ fontWeight: nearBreach ? 700 : 400 }}>
                       {a.slaHoursRemaining} h
                     </td>
-                    <td style={{ padding: "6px 4px" }}>
-                      <Link to={`/auths/${encodeURIComponent(a.id)}`} className="btn">
+                    <td>
+                      <IosLinkButton to={`/auths/${encodeURIComponent(a.id)}`} variant="secondary" size="sm">
                         Open
-                      </Link>
+                      </IosLinkButton>
                     </td>
                   </tr>
                 );
@@ -94,7 +83,6 @@ export default function AuthsQueue() {
           </table>
         </div>
       </div>
-    </div>
+    </AppPage>
   );
 }
-

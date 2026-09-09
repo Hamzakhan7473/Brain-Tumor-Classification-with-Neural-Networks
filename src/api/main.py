@@ -57,6 +57,12 @@ async def lifespan(app: FastAPI):
         ish = cfg.get("input_shape")
         task = cfg.get("task", "classification")
         print(f"  - {name}: input {ish}, task {task}")
+    try:
+        from src.llm.versions import log_startup_versions
+
+        log_startup_versions()
+    except Exception as exc:
+        print(f"LLM version pin: (unavailable: {exc})")
     print("API ready at http://127.0.0.1:8000")
     print("=" * 60)
     yield
@@ -155,6 +161,33 @@ class PredictResponse(BaseModel):
     clinical_context: Optional[dict] = None
     audit_id: Optional[str] = None
     audit_timestamp: Optional[str] = None
+    ingest_path: str = "demo"
+    research: Optional[dict] = None
+    qc: Optional[dict] = None
+    trusted: Optional[bool] = None
+
+
+class ClinicalValidation(BaseModel):
+    passed: bool = True
+    invented_numbers: list[str] = Field(default_factory=list)
+    invented_entities: list[str] = Field(default_factory=list)
+    omitted_findings: list[str] = Field(default_factory=list)
+    contradicted_claims: list[str] = Field(default_factory=list)
+    unaddressed_claims: list[str] = Field(default_factory=list)
+    independent_visual_claims: list[str] = Field(default_factory=list)
+    used_fallback: bool = False
+    regenerated: bool = False
+    violations: list[dict] = Field(default_factory=list)
+    contextual_grounding: Optional[dict] = None
+    chain_of_verification: Optional[dict] = None
+
+
+class ContentProvenance(BaseModel):
+    generated_by: str
+    prompt_template_version: str
+    grounding_score: Optional[float] = None
+    validator_status: str = "passed"
+    validator_warnings: list[str] = Field(default_factory=list)
 
 
 class ReportResponse(BaseModel):
@@ -164,6 +197,19 @@ class ReportResponse(BaseModel):
     study_instance_uid: Optional[str] = None
     site_id: Optional[str] = None
     shadow_mode: bool = False
+    validation: Optional[ClinicalValidation] = None
+    provenance: Optional[ContentProvenance] = None
+
+
+class ExplanationResponse(BaseModel):
+    prediction: str
+    confidence: float
+    explanation: str
+    study_instance_uid: Optional[str] = None
+    site_id: Optional[str] = None
+    shadow_mode: bool = False
+    validation: Optional[ClinicalValidation] = None
+    provenance: Optional[ContentProvenance] = None
 
 
 STRUCTURED_FEEDBACK_ERROR_CATEGORIES = frozenset(
@@ -182,14 +228,20 @@ STRUCTURED_SEVERITY_LABELS = frozenset({"Normal", "Mild", "Moderate", "Severe"})
 
 
 class StructuredClinicalFeedbackSubmit(BaseModel):
-    """Structured radiologist verdict for retraining / IRB workflows (schema v1.0)."""
+    """Structured radiologist verdict. Persisted for QA metrics. Clicks are not training data."""
 
     case_id: str = Field(..., min_length=4)
-    verdict: Literal["agree", "partial", "disagree"]
+    audit_id: str = Field(..., min_length=8, max_length=128, description="Joins StudyResult.audit_id")
+    report_id: Optional[str] = Field(None, max_length=128)
+    verdict: str = Field(..., min_length=1, max_length=32)
+    codes: list[str] = Field(default_factory=list)
     ground_truth: Optional[dict] = None
     error_categories: list[str] = Field(default_factory=list)
     clinical_notes: Optional[str] = Field(None, max_length=500)
-    time_spent_s: int = Field(..., ge=0, le=86400)
+    time_spent_s: int = Field(0, ge=0, le=86400)
+    measurements_unedited: Optional[bool] = True
+    ingest_at: Optional[str] = None
+    draft_ready_at: Optional[str] = None
     reviewer_display_name: Optional[str] = Field(None, max_length=200)
     reviewer_role: Optional[str] = Field(None, max_length=120)
     credentials: Optional[str] = Field(None, max_length=32)
@@ -267,9 +319,15 @@ class DocsFeedbackBody(BaseModel):
 
 
 class ShadowFeedbackBody(BaseModel):
+    audit_id: str = Field(..., min_length=8, max_length=128, description="Joins StudyResult.audit_id")
     verdict: str
+    codes: list[str] = Field(default_factory=list)
     ground_truth: Optional[dict] = None
     notes: Optional[str] = Field(None, max_length=500)
+    report_id: Optional[str] = Field(None, max_length=128)
+    measurements_unedited: Optional[bool] = True
+    ingest_at: Optional[str] = None
+    draft_ready_at: Optional[str] = None
 
 
 class ShadowAssignBody(BaseModel):
@@ -316,6 +374,17 @@ class Predict3DResponse(BaseModel):
     clinical_context: Optional[dict] = None
     audit_id: Optional[str] = None
     audit_timestamp: Optional[str] = None
+    ingest_path: str = "clinical"
+    qc: Optional[dict] = None
+    trusted: Optional[bool] = None
+
+
+class DicomDirIngestBody(BaseModel):
+    """Filesystem DICOM study ingest. Not a PACS C-STORE."""
+
+    path: str = Field(..., min_length=1)
+    run_inference: bool = False
+    age: Optional[int] = Field(None, ge=0, le=120)
 
 
 class ReportSignBody(BaseModel):
@@ -342,6 +411,10 @@ class CreateReportDraftBody(BaseModel):
     clinical_context: Optional[dict] = None
     scanner_field_strength: Optional[str] = None
     prior_studies: Optional[str] = None
+    prior_model_run: Optional[dict] = Field(
+        None,
+        description="Prior timepoint inference payload (wmh metrics) for longitudinal comparison.",
+    )
 
 
 class ReportDraftSectionUpdateBody(BaseModel):
@@ -357,8 +430,23 @@ class ReportDraftSignBody(BaseModel):
     acknowledged_disclaimer: bool = Field(..., description="Must be true to sign")
 
 
+class ReportAttestBody(BaseModel):
+    attested_by: str = Field(..., min_length=1, max_length=200)
+    attestation_text: str = Field(..., min_length=1)
+
+
+class ContentAttestBody(BaseModel):
+    """Attestation for free-text /report or explanation output (no draft id)."""
+
+    attested_by: str = Field(..., min_length=1, max_length=200)
+    attestation_text: str = Field(..., min_length=1)
+    content_kind: Literal["report", "explanation"] = "report"
+    content_sha256: Optional[str] = Field(None, max_length=64)
+    audit_id: Optional[str] = Field(None, max_length=128)
+
+
 class FindingsDisagreeBody(BaseModel):
-    """Capture radiologist override / disagreement for model improvement datasets."""
+    """Capture a radiologist override note. Persisted only; not training data."""
 
     audit_id: str
     notes: str = Field(..., min_length=1)
@@ -414,6 +502,7 @@ def _inference_event_to_model_run(ev: Dict[str, Any]) -> Dict[str, Any]:
         "label": ev.get("label"),
         "probabilities": dict(ev.get("probabilities") or {}),
         "wmh": ev.get("wmh") if isinstance(ev.get("wmh"), dict) else None,
+        "qc": ev.get("qc") if isinstance(ev.get("qc"), dict) else None,
     }
 
 
@@ -836,6 +925,8 @@ async def predict(
         "warnings": out.get("warnings") or [],
         "uncertainty": out.get("uncertainty"),
         "validation": out.get("validation"),
+        "qc": out.get("qc"),
+        "trusted": False,
     }
     audit_id, audit_ts = log_inference(
         bytes_data,
@@ -874,6 +965,10 @@ async def predict(
         clinical_context=ctx or None,
         audit_id=audit_id,
         audit_timestamp=audit_ts,
+        ingest_path="demo",
+        research={"triage": {"class": lbl, "confidence": cf}} if effective_model in {"custom_cnn", "xception", "transfer"} else None,
+        qc=out.get("qc"),
+        trusted=False,
     )
 
 
@@ -958,7 +1053,119 @@ async def predict_3d(
         clinical_context=raw.get("clinical_context") or ctx,
         audit_id=audit_id,
         audit_timestamp=audit_ts,
+        ingest_path="clinical",
+        qc=raw.get("qc"),
+        trusted=bool(raw.get("trusted", True)),
     )
+
+
+def _persist_dicom_dir_ingest(
+    result,
+    *,
+    run_inference: bool,
+    user_id: Optional[str],
+    age: Optional[int] = None,
+) -> Dict[str, Any]:
+    from src.inference.audit_log import log_inference
+    from src.ingest.dicom_dir import canonical_study_bytes, flair_volume_nifti_bytes
+
+    api_ver = (os.environ.get("API_MODEL_VERSION") or "").strip() or app.version
+    wmh_out: Optional[Dict[str, Any]] = None
+    warnings: list[str] = []
+    if run_inference and result.engines.get("wmh_3d") and result.ingest_path == "clinical":
+        if age is None:
+            warnings.append("WMH not run: patient age required to execute the FLAIR volume engine.")
+        else:
+            nifti = flair_volume_nifti_bytes(result)
+            if nifti is None:
+                warnings.append("WMH skipped: FLAIR series could not be assembled into a volume.")
+            else:
+                try:
+                    from src.inference.predict_3d import run_predict_3d
+
+                    wmh_out = run_predict_3d(
+                        nifti, "series_flair.nii.gz", "unet_3d_wmh", clinical_context={"age": int(age)}
+                    )
+                except Exception as exc:
+                    warnings.append(f"WMH not run: {exc}")
+    req = {
+        "endpoint": "/studies/from-dicom-dir",
+        "study_instance_uid": result.study_uid,
+        "series_manifest": result.series_manifest,
+        "engines": result.engines,
+        "ingest_path": result.ingest_path,
+        "ingest_source": "dicom_dir",
+    }
+    resp = {
+        "ingest_path": result.ingest_path,
+        "ingest_source": "dicom_dir",
+        "series_manifest": result.series_manifest,
+        "engines": result.engines,
+        "wmh": (wmh_out or {}).get("wmh") if wmh_out else None,
+        "warnings": warnings,
+    }
+    audit_id, audit_ts = log_inference(
+        canonical_study_bytes(result),
+        f"study:{result.study_uid}",
+        "dicom_dir_ingest",
+        api_ver,
+        {},
+        req,
+        resp,
+        user_id,
+    )
+    body = result.to_dict()
+    body.update({"audit_id": audit_id, "audit_timestamp": audit_ts, "warnings": warnings})
+    return body
+
+
+@app.post("/studies/from-dicom-dir")
+@limiter.limit("30/minute")
+async def studies_from_dicom_dir(
+    request: Request,
+    body: DicomDirIngestBody,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    """Group a DICOM folder into one StudyInstanceUID. Filesystem only — not C-STORE."""
+    from src.ingest.dicom_dir import group_dicom_dir
+
+    result = group_dicom_dir(body.path)
+    if result.rejected:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": result.reason or "UNGROUPABLE",
+                "errors": result.errors,
+                "ingest_path": "demo",
+            },
+        )
+    return _persist_dicom_dir_ingest(
+        result, run_inference=body.run_inference, user_id=x_user_id, age=body.age
+    )
+
+
+@app.post("/studies/from-drop-dir")
+@limiter.limit("10/minute")
+async def studies_from_drop_dir(
+    request: Request,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    """Batch-scan DICOM_DROP_DIR. One-shot filesystem watch — not a PACS listener."""
+    from src.ingest.watcher import configured_drop_dir, scan_drop_dir
+
+    root = configured_drop_dir()
+    if root is None:
+        raise HTTPException(status_code=400, detail="DICOM_DROP_DIR is not configured")
+    studies = []
+    errors = []
+    for result in scan_drop_dir(root):
+        if result.rejected:
+            errors.append(result.to_dict())
+            continue
+        studies.append(_persist_dicom_dir_ingest(result, run_inference=False, user_id=x_user_id))
+    return {"drop_dir": str(root), "studies": studies, "rejected": errors}
 
 
 @app.post("/report/sign")
@@ -1135,24 +1342,17 @@ async def get_trial_candidate_api(
     d["id"] = str(d.pop("_id", ""))
     return d
 
-def _image_bytes_for_llm(bytes_data: bytes, filename: str, content_type: str) -> bytes:
-    """Return image bytes suitable for LLM (PIL-compatible). For DICOM, convert slice to PNG bytes."""
-    is_dicom = (
-        filename.lower().endswith(".dcm")
-        or filename.lower().endswith(".dicom")
-        or (content_type or "").lower() in ("application/dicom", "application/dicom+xml")
-    )
-    if is_dicom:
-        from src.data.dicom_loader import load_dicom_slice
-        import io
-        from PIL import Image
-        batch, _ = load_dicom_slice(bytes_data, target_size=(224, 224), normalize=True)
-        arr = (batch[0] * 255).clip(0, 255).astype("uint8")
-        img = Image.fromarray(arr)
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return buf.getvalue()
-    return bytes_data
+def _saliency_overlay_bytes(saliency_b64: Optional[str]) -> Optional[bytes]:
+    """Decode Grad-CAM / saliency PNG bytes. Never used for raw diagnostic pixels."""
+    raw = (saliency_b64 or "").strip()
+    if not raw:
+        return None
+    import base64
+
+    try:
+        return base64.b64decode(raw)
+    except Exception:
+        return None
 
 
 @app.post("/report", response_model=ReportResponse)
@@ -1167,7 +1367,11 @@ async def report(
     _api_key: Optional[str] = Depends(verify_api_key),
 ):
     """
-    Same as /predict, plus LLM-generated report draft (requires GOOGLE_API_KEY).
+    Same as /predict, plus an LLM narration of the classifier output.
+
+    The uploaded file is used only for Keras inference. Raw scan bytes are
+    never sent to Claude (FDA Non-Device CDS Criterion 1). Optional visual
+    context is the Grad-CAM overlay only.
     """
     bytes_data = await file.read()
     if not bytes_data:
@@ -1192,7 +1396,7 @@ async def report(
     try:
         from src.inference.inference_exceptions import InputValidationFailed
 
-        label, conf, probs, _, _, _ = _run_predict(bytes_data, model, filename, content_type)
+        label, conf, probs, _, infer_meta, _ = _run_predict(bytes_data, model, filename, content_type)
     except InputValidationFailed as exc:
         raise HTTPException(status_code=422, detail=exc.detail) from exc
     except ValueError as e:
@@ -1204,15 +1408,21 @@ async def report(
 
     try:
         from src.llm.report import build_report
+        from src.llm.validation import ValidationResult
         from src.rag.retrieval import retrieve_evidence
-        image_for_llm = _image_bytes_for_llm(bytes_data, filename, content_type)
+
+        visual_overlay = {
+            "present": bool((infer_meta or {}).get("saliency_map_b64")),
+            "bbox_ids": [],
+        }
 
         # Retrieve grounding evidence (MongoDB Atlas Vector Search) before generating the report.
         evidence_context = ""
         try:
             evidence = await retrieve_evidence(
-                f"Brain MRI classification context: {label}. Model confidence: {conf:.2%}. "
-                "Provide clinical workflow and next steps guidance grounded in retrieved sources.",
+                "Research slice-wise MRI triage (not a signed finding). "
+                "Provide generic brain MRI reporting workflow guidance. "
+                "Do not treat a 2D class label as a clinical diagnosis.",
                 top_k=int(os.environ.get("RAG_TOP_K", "5")),
             )
             # Truncate each chunk to keep prompt size bounded.
@@ -1226,27 +1436,46 @@ async def report(
         except Exception:
             evidence_context = ""
 
-        report_text = build_report(
-            image_for_llm,
+        report_text, gate = build_report(
             label,
             conf,
-            provider="gemini",
             evidence_context=evidence_context,
+            probabilities=probs,
+            visual_overlay=visual_overlay,
         )
         if not report_text:
-            report_text = f"Prediction: {label} ({conf:.2%}). No LLM response."
+            report_text = (
+                f"Slice-wise research classifier suggested class {label}; "
+                "not used for measurement or signature."
+            )
+            gate = ValidationResult(passed=True, used_fallback=True)
     except Exception as e:
-        report_text = f"Prediction: {label} ({conf:.2%}). Report generation failed: {e}"
+        from src.llm.validation import ValidationResult as _VR
+
+        report_text = (
+            f"Slice-wise research classifier suggested class {label}; "
+            "not used for measurement or signature."
+        )
+        gate = _VR(passed=True, used_fallback=True)
 
     await _log_api_clinical(
         "api_report",
         study_instance_uid,
         site_id,
         shadow_mode,
-        {"model": model, "label": label, "confidence": conf, "probabilities": probs},
+        {
+            "model": model,
+            "label": label,
+            "confidence": conf,
+            "probabilities": probs,
+            "validation": gate.to_dict(),
+        },
     )
     _maybe_shadow_store(shadow_mode, study_instance_uid, site_id, model, label, conf, probs, "/report")
 
+    from src.llm.content_provenance import build_content_provenance
+
+    prov = build_content_provenance(prompt_template_name="report", gate=gate)
     return ReportResponse(
         prediction=label,
         confidence=conf,
@@ -1254,6 +1483,76 @@ async def report(
         study_instance_uid=study_instance_uid,
         site_id=site_id,
         shadow_mode=shadow_mode,
+        validation=ClinicalValidation(**{k: v for k, v in gate.to_dict().items() if k in ClinicalValidation.model_fields}),
+        provenance=ContentProvenance(**prov),
+    )
+
+
+@app.post("/explain", response_model=ExplanationResponse)
+@limiter.limit("60/minute")
+async def explain_scan(
+    request: Request,
+    file: UploadFile = File(...),
+    model: str = "custom_cnn",
+    study_instance_uid: Optional[str] = Form(None),
+    site_id: Optional[str] = Form(None),
+    shadow_mode: bool = Form(False),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    """
+    Narrate the CNN/U-Net result. Raw scan bytes are used only for Keras
+    inference — they are never sent to Claude (FDA Non-Device CDS Criterion 1).
+    """
+    bytes_data = await file.read()
+    if not bytes_data:
+        raise HTTPException(400, detail="Empty file")
+    filename = file.filename or "image"
+    content_type = file.content_type or ""
+    try:
+        from src.inference.inference_exceptions import InputValidationFailed
+
+        label, conf, probs, _, infer_meta, _ = _run_predict(bytes_data, model, filename, content_type)
+    except InputValidationFailed as exc:
+        raise HTTPException(status_code=422, detail=exc.detail) from exc
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    if label is None:
+        raise HTTPException(503, detail="Model not available or load failed")
+
+    try:
+        from src.llm.explanations import explain_image
+
+        visual_overlay = {
+            "present": bool((infer_meta or {}).get("saliency_map_b64")),
+            "bbox_ids": [],
+        }
+        explanation, gate, prov = explain_image(
+            label,
+            confidence=conf,
+            probabilities=probs,
+            visual_overlay=visual_overlay,
+        )
+    except Exception as e:
+        from src.llm.content_provenance import build_content_provenance
+        from src.llm.validation import ValidationResult as _VR
+
+        explanation = f"Model prediction: {label}. Explanation unavailable: {e}"
+        gate = _VR(passed=True, used_fallback=True)
+        prov = build_content_provenance(prompt_template_name="explanation", gate=gate)
+
+    return ExplanationResponse(
+        prediction=label,
+        confidence=conf,
+        explanation=explanation,
+        study_instance_uid=study_instance_uid,
+        site_id=site_id,
+        shadow_mode=shadow_mode,
+        validation=ClinicalValidation(
+            **{k: v for k, v in gate.to_dict().items() if k in ClinicalValidation.model_fields}
+        ),
+        provenance=ContentProvenance(**prov),
     )
 
 
@@ -1294,12 +1593,32 @@ async def create_report_draft(
         "scanner_field_strength": body.scanner_field_strength,
         "prior_studies": body.prior_studies,
     }
+    if isinstance(model_run.get("qc"), dict):
+        case["qc"] = model_run["qc"]
+    from src.ingest.path import wmh_volume_is_trusted
+
+    if body.prior_model_run and wmh_volume_is_trusted(model_run):
+        from src.inference.wmh_longitudinal import compare_wmh_timepoints
+
+        lon = compare_wmh_timepoints(
+            model_run,
+            body.prior_model_run,
+            prior_label=body.prior_studies or "prior study",
+        )
+        if lon is not None:
+            case["longitudinal"] = lon
     try:
         builder = ReportBuilder(body.template_id.strip())
         draft = builder.build_draft(case=case, model_run=model_run)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
+    from src.api.attestation import stamp_payload_hashes
+    from src.ingest.path import export_allowed_for, resolve_ingest_path
+
+    draft["ingest_path"] = resolve_ingest_path(model_run)
+    draft["export_allowed"] = export_allowed_for(draft)
+    stamp_payload_hashes(draft)
     await insert_report_draft(draft)
     return draft
 
@@ -1430,6 +1749,125 @@ async def regenerate_report_draft_section(
     return {"ok": True, "version": history_entry["version"]}
 
 
+@app.post("/report/{report_id}/attest")
+@limiter.limit("30/minute")
+async def attest_report_draft(
+    request: Request,
+    report_id: str,
+    body: ReportAttestBody,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    api_key_user: Optional[str] = Depends(verify_api_key),
+):
+    """
+    Explicit clinician attestation — distinct from viewing and from e-sign.
+
+    Required before PDF/FHIR export or POST /report/{id}/sign. Does not
+    bypass Prompt 1/2/4 automated gates.
+    """
+    from src.api.attestation import (
+        attestation_text_for,
+        attestation_text_is_valid,
+        engine_versions,
+        measurement_audit_id,
+        report_is_attested,
+    )
+    from src.inference.audit_log import log_report_draft_event
+    from src.db.repositories import get_report_draft, replace_report_draft
+
+    user = _report_draft_user(x_user_id, api_key_user)
+    if not str(body.attested_by or "").strip():
+        raise HTTPException(status_code=422, detail="attested_by is required")
+    if not str(body.attestation_text or "").strip():
+        raise HTTPException(status_code=422, detail="attestation_text is required")
+
+    report = await get_report_draft(report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    source_audit = measurement_audit_id(report)
+    locked_text = attestation_text_for(source_audit)
+    if not attestation_text_is_valid(body.attestation_text, source_audit):
+        raise HTTPException(
+            status_code=400,
+            detail="attestation_text must be the required clinician attestation statement",
+        )
+    if report.get("status") in ("signed", "rejected"):
+        raise HTTPException(status_code=400, detail=f"Cannot attest a {report['status']} report")
+    if report_is_attested(report):
+        return {
+            "ok": True,
+            "already_attested": True,
+            "attested_by": report.get("attested_by"),
+            "attested_at": report.get("attested_at"),
+            "audit_id": report.get("attestation_audit_id"),
+        }
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    audit_id = log_report_draft_event(
+        event_type="report_attested",
+        user_id=user,
+        payload={
+            "report_id": report_id,
+            "study_uid": report.get("study_uid"),
+            "attested_by": body.attested_by.strip(),
+            "attestation_text": locked_text,
+            "payload_hash": report.get("payload_hash"),
+            "engine_versions": engine_versions(report),
+            "timestamp_utc": now,
+        },
+    )
+    report["attested_by"] = body.attested_by.strip()
+    report["attested_at"] = now
+    report["attestation_text"] = locked_text
+    report["attestation_audit_id"] = audit_id
+    report["last_modified"] = now
+    await replace_report_draft(report_id, report)
+    return {
+        "ok": True,
+        "already_attested": False,
+        "attested_by": report["attested_by"],
+        "attested_at": now,
+        "audit_id": audit_id,
+    }
+
+
+@app.post("/report/attest-content")
+@limiter.limit("30/minute")
+async def attest_free_text_content(
+    request: Request,
+    body: ContentAttestBody,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    api_key_user: Optional[str] = Depends(verify_api_key),
+):
+    """Attest a free-text /report or explanation when there is no draft id."""
+    from src.api.attestation import attestation_text_for, attestation_text_is_valid
+    from src.inference.audit_log import log_report_draft_event
+
+    user = _report_draft_user(x_user_id, api_key_user)
+    if not str(body.attested_by or "").strip() or not str(body.attestation_text or "").strip():
+        raise HTTPException(status_code=422, detail="attested_by and attestation_text are required")
+    bound_id = str(body.audit_id or body.content_sha256 or "unbound").strip() or "unbound"
+    locked_text = attestation_text_for(bound_id)
+    if not attestation_text_is_valid(body.attestation_text, bound_id):
+        raise HTTPException(
+            status_code=400,
+            detail="attestation_text must be the required clinician attestation statement",
+        )
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    audit_id = log_report_draft_event(
+        event_type="content_attested",
+        user_id=user,
+        payload={
+            "attested_by": body.attested_by.strip(),
+            "attestation_text": locked_text,
+            "content_kind": body.content_kind,
+            "content_sha256": body.content_sha256,
+            "measurement_audit_id": bound_id,
+            "timestamp_utc": now,
+        },
+    )
+    return {"ok": True, "audit_id": audit_id, "attested_at": now}
+
+
 @app.post("/report/{report_id}/sign")
 @limiter.limit("20/minute")
 async def sign_report_draft(
@@ -1439,6 +1877,14 @@ async def sign_report_draft(
     x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
     api_key_user: Optional[str] = Depends(verify_api_key),
 ):
+    from src.api.attestation import (
+        engine_versions,
+        require_attested,
+        require_clinical_path,
+        require_payload_hash_unchanged,
+        require_sign_role,
+        require_trusted_engine,
+    )
     from src.api.report_export import serialize_report_for_hash, sha256_text
     from src.inference.audit_log import log_report_draft_event
     from src.db.repositories import get_report_draft, replace_report_draft, insert_audit_log_event
@@ -1453,6 +1899,12 @@ async def sign_report_draft(
     if report.get("status") == "signed":
         raise HTTPException(status_code=400, detail="Already signed")
 
+    require_clinical_path(report)
+    require_trusted_engine(report)
+    require_attested(report)
+    require_sign_role(body.signer_role)
+    require_payload_hash_unchanged(report)
+
     final_text = serialize_report_for_hash(report)
     text_hash = sha256_text(final_text)
 
@@ -1463,11 +1915,13 @@ async def sign_report_draft(
             "report_id": report_id,
             "study_uid": report.get("study_uid"),
             "final_text_hash": text_hash,
+            "payload_hash": report.get("payload_hash"),
             "signed_by_name": body.signer_name,
             "signed_by_role": body.signer_role,
             "npi_or_license": body.npi_or_license,
             "edits_made": sum(len(s.get("history") or []) for s in report.get("sections") or []),
             "model_confidence": report.get("model_confidence"),
+            "engine_versions": engine_versions(report),
         },
     )
 
@@ -1504,26 +1958,50 @@ async def sign_report_draft(
     }
 
 
+def _log_report_exported(report: dict, *, kind: str, user: str) -> None:
+    from src.api.attestation import engine_versions
+    from src.inference.audit_log import log_report_draft_event
+
+    log_report_draft_event(
+        event_type="report_exported",
+        user_id=user,
+        payload={
+            "report_id": report.get("report_id"),
+            "study_uid": report.get("study_uid"),
+            "kind": kind,
+            "payload_hash": report.get("payload_hash"),
+            "text_hash": report.get("signed_text_hash"),
+            "engine_versions": engine_versions(report),
+        },
+    )
+
+
 @app.get("/report/{report_id}/pdf")
 @limiter.limit("30/minute")
 async def export_report_draft_pdf(
     request: Request,
     report_id: str,
-    _api_key: Optional[str] = Depends(verify_api_key),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    api_key_user: Optional[str] = Depends(verify_api_key),
 ):
     from fastapi.responses import Response
+    from src.api.attestation import require_exportable
     from src.api.report_export import render_report_pdf_bytes
     from src.db.repositories import get_report_draft
 
     report = await get_report_draft(report_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    require_exportable(report)
     footer_audit = str(report.get("signature_audit_id") or report.get("report_id") or "")
-    footer_hash = str(report.get("signed_text_hash") or "unsigned")
+    footer_hash = str(report.get("signed_text_hash") or "")
     try:
         pdf_bytes = render_report_pdf_bytes(report, footer_audit=footer_audit, footer_hash=footer_hash)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
+    _log_report_exported(report, kind="pdf", user=_report_draft_user(x_user_id, api_key_user))
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -1536,18 +2014,23 @@ async def export_report_draft_pdf(
 async def export_report_draft_fhir(
     request: Request,
     report_id: str,
-    _api_key: Optional[str] = Depends(verify_api_key),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    api_key_user: Optional[str] = Depends(verify_api_key),
 ):
+    from src.api.attestation import require_exportable
     from src.api.report_export import build_fhir_diagnostic_report
     from src.db.repositories import get_report_draft
 
     report = await get_report_draft(report_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    require_exportable(report)
     pdf_url = f"/report/{report_id}/pdf"
-    dr = build_fhir_diagnostic_report(report, pdf_url=pdf_url)
-    if report.get("status") != "signed":
-        dr["status"] = "preliminary"
+    try:
+        dr = build_fhir_diagnostic_report(report, pdf_url=pdf_url)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
+    _log_report_exported(report, kind="fhir", user=_report_draft_user(x_user_id, api_key_user))
     return dr
 
 
@@ -1560,9 +2043,8 @@ async def clinical_feedback(
     api_key_user: Optional[str] = Depends(verify_api_key),
 ):
     """
-    Submit structured radiologist verdict (v1.0) for retraining / IRB workflows.
-    Persists to ``clinical_feedback`` Mongo collection (or in-memory when Mongo disabled),
-    JSONL audit, and Mongo ``audit_log``. Shadow cases also update the shadow queue row.
+    Submit neurosight.feedback.v1. Persisted to clinical_feedback + JSONL.
+    Join: FeedbackEvent.audit_id = StudyResult.audit_id. Clicks are not training data.
     """
     import secrets
 
@@ -1590,9 +2072,26 @@ async def clinical_feedback(
         if ec not in STRUCTURED_FEEDBACK_ERROR_CATEGORIES:
             raise HTTPException(status_code=400, detail=f"Unknown error category: {ec}")
 
-    v = body.verdict.lower().strip()
-    if v in ("partial", "disagree") and not body.ground_truth:
-        raise HTTPException(status_code=400, detail="Ground truth required when verdict is partial or disagree")
+    from src.clinical.feedback_event import (
+        build_feedback_event,
+        engine_versions_from_run,
+        is_allowed_feedback_code,
+        map_feedback_code,
+    )
+    from src.clinical.shadow_store import append_clinical_feedback
+
+    join_audit_id = (body.audit_id or "").strip()
+    if not join_audit_id:
+        raise HTTPException(status_code=400, detail="audit_id is required (joins StudyResult.audit_id)")
+
+    incoming = list(body.codes) if body.codes else [body.verdict]
+    for raw in incoming:
+        if not is_allowed_feedback_code(raw):
+            raise HTTPException(
+                status_code=400,
+                detail="verdict/codes must be agree | overcall | undercall | wrong_anatomy | wrong_delta | useless",
+            )
+    v, raw_verdict = map_feedback_code(incoming[0])
 
     mr_shadow: Optional[Dict[str, Any]] = None
     inf: Dict[str, Any] = {}
@@ -1622,16 +2121,14 @@ async def clinical_feedback(
     if not allowed_classes and task == "classification":
         allowed_classes = {c.lower() for c in _get_class_names()}
 
-    if task == "classification" and v != "agree":
+    if task == "classification" and body.ground_truth and (body.ground_truth or {}).get("class"):
         cls = (body.ground_truth or {}).get("class")
-        if not cls:
-            raise HTTPException(status_code=400, detail="Ground truth class is required")
-        if str(cls).lower() not in allowed_classes:
+        if allowed_classes and str(cls).lower() not in allowed_classes:
             raise HTTPException(status_code=400, detail=f"Class must be one of {sorted(allowed_classes)}")
 
-    if task == "segmentation" and v != "agree":
+    if task == "segmentation" and body.ground_truth and (body.ground_truth or {}).get("severity"):
         sev = (body.ground_truth or {}).get("severity")
-        if not sev or str(sev) not in STRUCTURED_SEVERITY_LABELS:
+        if sev and str(sev) not in STRUCTURED_SEVERITY_LABELS:
             raise HTTPException(
                 status_code=400,
                 detail=f"severity must be one of {sorted(STRUCTURED_SEVERITY_LABELS)}",
@@ -1642,29 +2139,52 @@ async def clinical_feedback(
     ts_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     now_dt = datetime.now(timezone.utc)
 
-    audit_id = log_clinical_feedback_audit(
+    log_ref = log_clinical_feedback_audit(
         event_type="clinical_feedback",
         user_id=user,
         payload={
             "feedback_id": feedback_id,
             "case_id": case_id,
             "verdict": v,
+            "verdict_raw": raw_verdict,
             "model_label": model_run.get("label"),
             "model_confidence": model_run.get("confidence"),
             "error_categories": body.error_categories,
             "ground_truth": body.ground_truth,
             "time_spent_s": body.time_spent_s,
+            "audit_id": join_audit_id,
         },
     )
 
-    legacy_mirror = "agree" if v == "agree" else ("unclear" if v == "partial" else "wrong_class")
+    ingest_at = body.ingest_at or (str(inf.get("timestamp") or "") or None) or (
+        str(sc.get("received_at") or "") if sc else None
+    )
+    draft_ready_at = body.draft_ready_at or (str(inf.get("timestamp") or "") or None)
+    event = build_feedback_event(
+        feedback_id=feedback_id,
+        audit_id=join_audit_id,
+        report_id=body.report_id,
+        study_uid=case_id,
+        codes=incoming,
+        submitted_by=user,
+        submitted_at=ts_iso,
+        engine_versions=engine_versions_from_run(model_run),
+        optional_note=body.clinical_notes,
+        measurements_unedited=body.measurements_unedited,
+        ingest_at=str(ingest_at) if ingest_at else None,
+        draft_ready_at=str(draft_ready_at) if draft_ready_at else None,
+        time_to_feedback_s=int(body.time_spent_s) if body.time_spent_s else None,
+    )
+
+    legacy_mirror = "agree" if v == "agree" else ("unclear" if raw_verdict == "partial" else "wrong_class")
 
     record: Dict[str, Any] = {
         "feedback_id": feedback_id,
         "case_id": case_id,
         "study_instance_uid": case_id,
         "model_run_id": model_run["audit_id"],
-        "verdict": body.verdict,
+        "verdict": v,
+        "verdict_raw": raw_verdict,
         "ground_truth": body.ground_truth,
         "error_categories": body.error_categories,
         "clinical_notes": (body.clinical_notes or "")[:500] if body.clinical_notes else None,
@@ -1675,18 +2195,20 @@ async def clinical_feedback(
             "credentials": body.credentials or "MD",
         },
         "timing": {
-            "case_opened_at": now_dt,
-            "verdict_at": now_dt,
-            "submitted_at": now_dt,
+            **event["timing"],
             "time_spent_s": int(body.time_spent_s),
+            "submitted_at": ts_iso,
         },
-        "audit_id": audit_id,
+        "audit_id": join_audit_id,
         "schema_version": "1.0",
+        "schema": "neurosight.feedback.v1",
         "shadow_mode": True,
-        "used_for_retraining": False,
         "timestamp": ts_iso,
         "feedback": legacy_mirror,
         "site_id": site_id,
+        "measurements_unedited": event["measurements_unedited"],
+        "feedback_event": event,
+        "log_ref": log_ref,
     }
 
     if sc and sc.get("shadow_mode"):
@@ -1701,25 +2223,38 @@ async def clinical_feedback(
             raise HTTPException(status_code=500, detail="Failed to update shadow case feedback")
 
     await insert_structured_clinical_feedback(record)
+    try:
+        append_clinical_feedback(
+            {
+                "feedback_id": feedback_id,
+                "audit_id": join_audit_id,
+                "study_uid": case_id,
+                "codes": event["codes"],
+                "schema": "neurosight.feedback.v1",
+            }
+        )
+    except Exception:
+        pass
 
     try:
         await insert_audit_log_event(
             {
-                "audit_id": audit_id,
+                "audit_id": join_audit_id,
                 "event_type": "clinical_feedback",
                 "user_id": user,
                 "timestamp": now_dt,
                 "payload": {
                     "feedback_id": feedback_id,
                     "case_id": case_id,
-                    "verdict": body.verdict,
+                    "verdict": v,
+                    "audit_id": join_audit_id,
                 },
             }
         )
     except Exception:
         pass
 
-    return {"ok": True, "feedback_id": feedback_id, "audit_id": audit_id}
+    return {"ok": True, "feedback_id": feedback_id, "audit_id": join_audit_id}
 
 
 @app.get("/clinical/feedback/stats")
@@ -1754,6 +2289,99 @@ async def clinical_feedback_recent(
         return out
 
     return {"items": [_ser(i) for i in items]}
+
+
+# --- BICR (Stage 2: dual-read + adjudication + time-point lock) ---
+
+from src.bicr.http_handlers import (
+    BicrAdjudicateBody,
+    BicrEnrollBody,
+    BicrLockBody,
+    BicrReadSubmitBody,
+    handle_bicr_adjudicate,
+    handle_bicr_enroll,
+    handle_bicr_get,
+    handle_bicr_lock,
+    handle_bicr_queue,
+    handle_bicr_read,
+)
+
+
+@app.post("/bicr/cases/enroll")
+@limiter.limit("60/minute")
+async def bicr_enroll_case(
+    request: Request,
+    body: BicrEnrollBody,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    api_key_user: Optional[str] = Depends(verify_api_key),
+):
+    user = ((x_user_id or api_key_user or "anonymous") or "anonymous")[:128]
+    case_payload = await get_case(request, body.case_id.strip(), _api_key=api_key_user)
+    case_review = case_payload.get("case_review")
+    if not case_review:
+        raise HTTPException(status_code=404, detail="Case review payload missing")
+    return await handle_bicr_enroll(body, user, case_review)
+
+
+@app.get("/bicr/cases/{case_id}")
+@limiter.limit("120/minute")
+async def bicr_get_case(
+    request: Request,
+    case_id: str,
+    role: str = Query("reader1", pattern="^(reader1|reader2|adjudicator)$"),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    return await handle_bicr_get(case_id.strip(), role)  # type: ignore[arg-type]
+
+
+@app.post("/bicr/cases/{case_id}/reads")
+@limiter.limit("60/minute")
+async def bicr_submit_read(
+    request: Request,
+    case_id: str,
+    body: BicrReadSubmitBody,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    api_key_user: Optional[str] = Depends(verify_api_key),
+):
+    user = ((x_user_id or api_key_user or "anonymous") or "anonymous")[:128]
+    return await handle_bicr_read(case_id.strip(), body, user)
+
+
+@app.post("/bicr/cases/{case_id}/adjudicate")
+@limiter.limit("60/minute")
+async def bicr_adjudicate_case(
+    request: Request,
+    case_id: str,
+    body: BicrAdjudicateBody,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    api_key_user: Optional[str] = Depends(verify_api_key),
+):
+    user = ((x_user_id or api_key_user or "anonymous") or "anonymous")[:128]
+    return await handle_bicr_adjudicate(case_id.strip(), body, user)
+
+
+@app.post("/bicr/cases/{case_id}/lock")
+@limiter.limit("30/minute")
+async def bicr_lock_timepoint(
+    request: Request,
+    case_id: str,
+    body: BicrLockBody,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    api_key_user: Optional[str] = Depends(verify_api_key),
+):
+    user = ((x_user_id or api_key_user or "anonymous") or "anonymous")[:128]
+    return await handle_bicr_lock(case_id.strip(), body, user)
+
+
+@app.get("/bicr/queue")
+@limiter.limit("120/minute")
+async def bicr_queue(
+    request: Request,
+    role: str = Query("reader1", pattern="^(reader1|reader2|adjudicator)$"),
+    limit: int = Query(50, ge=1, le=200),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    return await handle_bicr_queue(role, limit)  # type: ignore[arg-type]
 
 
 @app.get("/cases", response_model=list[CaseSummary])
@@ -1887,6 +2515,7 @@ async def get_case(
                 "timestamp": ts_out,
                 "filename": "shadow_case",
                 "metrics": mr.get("metrics"),
+                "audit_id": mr.get("audit_id") or (case_review.get("model_run") or {}).get("audit_id"),
             },
             "feedback": fb if fb else None,
             "case_review": case_review,
@@ -2005,9 +2634,15 @@ async def shadow_submit_feedback(
     uid = (api_key_user or "anonymous")[:128]
     return await handle_shadow_feedback(
         study_uid=study_uid,
+        audit_id=body.audit_id,
         verdict=body.verdict,
+        codes=body.codes,
         ground_truth=body.ground_truth,
         notes=body.notes,
+        report_id=body.report_id,
+        measurements_unedited=body.measurements_unedited,
+        ingest_at=body.ingest_at,
+        draft_ready_at=body.draft_ready_at,
         user_id=uid,
     )
 

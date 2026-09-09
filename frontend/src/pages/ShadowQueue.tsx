@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import ShadowModeBanner from "../components/shadow/ShadowModeBanner";
 import { assignShadowCase, fetchShadowQueue, predictApiDisplayBase, retryShadowCase } from "../lib/api";
+import { IosButton, IosLinkButton } from "../components/ui/IosButton";
 import "./ShadowQueue.css";
 
 type Row = Record<string, unknown>;
@@ -134,7 +135,8 @@ export default function ShadowQueue() {
   const live = listener === "live";
 
   return (
-    <div className="shadow-queue-page">
+    <div className="app-page shadow-queue-page">
+      <div className="shadow-queue-inner">
       <ShadowModeBanner />
 
       <div className="sq-header-row">
@@ -143,17 +145,17 @@ export default function ShadowQueue() {
             Shadow queue <span className="sq-phase">Phase B</span>
           </div>
           <p className="sq-sub">
-            Review AI output against PACS-linked studies. Capture structured agreement for IRB / QMS evidence. Nothing
-            here is prospective or patient-facing.
+            Review AI output against PACS-linked studies. Capture structured agreement for QA metrics. Clicks are not
+            training data. Nothing here is prospective or patient-facing.
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button type="button" className="btnOutline" onClick={() => void exportCsv()}>
+          <IosButton variant="ghost" onClick={() => void exportCsv()}>
             Export CSV
-          </button>
-          <Link to="/upload" className="btnPrimary">
+          </IosButton>
+          <IosLinkButton to="/upload" variant="primary">
             Manual upload
-          </Link>
+          </IosLinkButton>
         </div>
       </div>
 
@@ -169,7 +171,7 @@ export default function ShadowQueue() {
         <div className="sq-kpi">
           <div className="sq-kpi-label">Today</div>
           <div className="sq-kpi-value">{String(kpis.total_today ?? 0)}</div>
-          <div className="sq-kpi-sub" style={{ color: Number(kpis.delta_vs_yesterday) >= 0 ? "var(--green-700)" : "var(--ink-soft)" }}>
+          <div className={`sq-kpi-sub${Number(kpis.delta_vs_yesterday) >= 0 ? " sq-kpi-sub--up" : ""}`}>
             Δ vs yesterday {String(kpis.delta_vs_yesterday ?? 0)}
           </div>
         </div>
@@ -221,9 +223,9 @@ export default function ShadowQueue() {
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="btn" onClick={() => void load()} disabled={loading}>
+            <IosButton variant="secondary" onClick={() => void load()} disabled={loading} loading={loading}>
               Refresh
-            </button>
+            </IosButton>
           </div>
         </div>
 
@@ -236,9 +238,9 @@ export default function ShadowQueue() {
             <div style={{ fontSize: 28, marginBottom: 8 }}>∅</div>
             <div style={{ fontWeight: 800, color: "var(--ink)" }}>No cases match your filters</div>
             <p style={{ marginTop: 8 }}>Adjust filters or ingest via POST /shadow/ingest (authenticated).</p>
-            <button type="button" className="btnOutline" style={{ marginTop: 12 }} onClick={() => { setChip("all"); setSearch(""); }}>
+            <IosButton variant="ghost" style={{ marginTop: 12 }} onClick={() => { setChip("all"); setSearch(""); }}>
               Reset filters
-            </button>
+            </IosButton>
           </div>
         ) : (
           <div className="sq-table-wrap">
@@ -335,6 +337,7 @@ export default function ShadowQueue() {
         <div style={{ marginTop: 10, fontSize: 12, color: "var(--ink-mute)" }}>
           Showing {items.length} of {total} · auto-refresh 15s
         </div>
+      </div>
       </div>
     </div>
   );

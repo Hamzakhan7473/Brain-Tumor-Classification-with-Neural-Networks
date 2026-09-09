@@ -2,8 +2,10 @@ import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getCase } from "../api/client";
 import { fetchShadowConfig, submitShadowFeedback } from "../lib/api";
+import { AppPage } from "../components/layout/AppPage";
 import ShadowModeBanner from "../components/shadow/ShadowModeBanner";
-import { IosButton } from "../components/ui/IosButton";
+import { IosButton, IosLinkButton } from "../components/ui/IosButton";
+import { TRIAGE_BANNER } from "../lib/triageCopy";
 
 type StoredPrediction = {
   scanBase64: string;
@@ -32,6 +34,7 @@ export default function CaseDetail() {
   const [notes, setNotes] = useState("");
   const [fbBusy, setFbBusy] = useState(false);
   const [fbOk, setFbOk] = useState(false);
+  const [auditId, setAuditId] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -46,6 +49,8 @@ export default function CaseDetail() {
         const sh = Boolean(payload?.from_shadow_queue);
         setFromShadow(sh);
         setShadowCase(sh ? ((payload as { shadow_case?: Record<string, unknown> }).shadow_case ?? null) : null);
+        const cr = (payload as { case_review?: { model_run?: { audit_id?: string } } }).case_review;
+        setAuditId(String(inf.audit_id || cr?.model_run?.audit_id || ""));
 
         let scanBase64 = "";
         const raw = sessionStorage.getItem("lastPrediction");
@@ -84,6 +89,10 @@ export default function CaseDetail() {
 
   const submitFb = async (verdict: "agree" | "disagree" | "partial") => {
     if (!studyId) return;
+    if (!auditId) {
+      window.alert("Missing study audit_id; cannot persist feedback.");
+      return;
+    }
     setFbBusy(true);
     setFbOk(false);
     try {
@@ -94,9 +103,11 @@ export default function CaseDetail() {
             ? { notes_only: true }
             : undefined;
       await submitShadowFeedback(studyId, {
+        audit_id: auditId,
         verdict,
         ground_truth: ground,
         notes: notes.slice(0, 500) || undefined,
+        measurements_unedited: true,
       });
       setFbOk(true);
       window.setTimeout(() => {
@@ -111,37 +122,36 @@ export default function CaseDetail() {
 
   if (!stored) {
     return (
-      <div className="container">
-        <h2 style={{ marginTop: 16 }}>Case detail</h2>
+      <AppPage title="Case detail">
         {fromShadow ? <ShadowModeBanner /> : null}
-        {error ? <p style={{ color: "crimson", marginTop: 8 }}>{error}</p> : null}
-        <p style={{ color: "var(--ink-mute)", marginTop: 8 }}>
+        {error ? <p className="app-text-error" style={{ marginTop: 8 }}>{error}</p> : null}
+        <p className="app-text-muted" style={{ marginTop: 8 }}>
           If MongoDB is not enabled or this study is not present, upload a scan first from{" "}
           <Link to="/upload" style={{ textDecoration: "underline" }}>
             Upload &amp; Predict
           </Link>{" "}
-          or ingest a shadow case via <span style={{ fontFamily: "ui-monospace, monospace" }}>POST /shadow/ingest</span>.
+          or ingest a shadow case via <span className="app-text-mono">POST /shadow/ingest</span>.
         </p>
-      </div>
+      </AppPage>
     );
   }
 
   return (
-    <div className="container">
-      {fromShadow ? <ShadowModeBanner /> : null}
-
-      <h2 style={{ marginTop: 16 }}>Case · {stored.study_instance_uid}</h2>
-      <p style={{ color: "var(--ink-mute)", marginBottom: 16 }}>
-        {apiLoaded
+    <AppPage
+      title={`Case · ${stored.study_instance_uid}`}
+      subtitle={
+        apiLoaded
           ? fromShadow
             ? "Shadow queue case — feedback is the primary action; no clinical report is available."
             : "Loaded from MongoDB (image preview uses session cache when available)."
-          : "Loading…"}
-      </p>
+          : "Loading…"
+      }
+    >
+      {fromShadow ? <ShadowModeBanner /> : null}
 
-      <div className="grid2">
+      <div className="app-grid-2">
         <div className="card">
-          <div style={{ fontWeight: 800 }}>Scan &amp; saliency preview</div>
+          <div className="app-card-title">Scan &amp; saliency preview</div>
           <div style={{ marginTop: 10 }}>
             <div
               style={{
@@ -177,8 +187,9 @@ export default function CaseDetail() {
         </div>
 
         <div className="card">
-          <div style={{ fontWeight: 800 }}>AI summary</div>
-          <div style={{ marginTop: 10, color: "var(--ink-mute)" }}>
+          <div className="app-card-title">Research triage</div>
+          <div className="app-text-muted" style={{ marginTop: 10 }}>
+            <div style={{ marginBottom: 8 }}>{TRIAGE_BANNER}</div>
             <div>
               <b>Study UID:</b> {stored.study_instance_uid}
             </div>
@@ -189,7 +200,7 @@ export default function CaseDetail() {
               <b>Model:</b> {stored.model}
             </div>
             <div>
-              <b>AI label:</b> {stored.prediction.label} ({(stored.prediction.confidence * 100).toFixed(1)}%)
+              <b>Suggested class (research):</b> {stored.prediction.label} ({(stored.prediction.confidence * 100).toFixed(1)}%)
             </div>
             {stored.metrics ? (
               <pre style={{ marginTop: 10, fontSize: 11, color: "var(--ink-mid)", whiteSpace: "pre-wrap" }}>
@@ -200,15 +211,15 @@ export default function CaseDetail() {
 
           {!fromShadow ? (
             <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Link to="/report" className="btn-large-outline">
+              <IosLinkButton to="/report" variant="ghost" size="lg">
                 Open report draft
-              </Link>
-              <Link to={`/reading/${encodeURIComponent(stored.study_instance_uid)}`} className="btn btnOutline">
+              </IosLinkButton>
+              <IosLinkButton to={`/reading/${encodeURIComponent(stored.study_instance_uid)}`} variant="ghost">
                 Reading mode
-              </Link>
-              <Link to="/clinical-feedback" className="btn-primary">
+              </IosLinkButton>
+              <IosLinkButton to="/clinical-feedback" variant="primary">
                 Give feedback
-              </Link>
+              </IosLinkButton>
             </div>
           ) : null}
 
@@ -285,7 +296,7 @@ export default function CaseDetail() {
                 </IosButton>
               </div>
               {fbOk ? (
-                <p style={{ marginTop: 12, color: "var(--green-700)", fontWeight: 700 }}>Feedback recorded — returning to queue…</p>
+                <p className="app-text-success" style={{ marginTop: 12, fontWeight: 700 }}>Feedback recorded — returning to queue…</p>
               ) : null}
               {shadowCase ? (
                 <p style={{ marginTop: 14, fontSize: 11, color: "var(--ink-mute)", fontFamily: "ui-monospace, monospace" }}>
@@ -296,6 +307,6 @@ export default function CaseDetail() {
           ) : null}
         </div>
       </div>
-    </div>
+    </AppPage>
   );
 }

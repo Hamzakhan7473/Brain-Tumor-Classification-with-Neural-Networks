@@ -10,7 +10,38 @@ from typing import Any
 import yaml
 
 from src.inference.audit_log import log_report_draft_event
-from src.llm.client import get_llm_client
+from src.inference.qc import LIMITED_EXAM_SENTENCE
+from src.ingest.path import (
+    export_allowed_for,
+    is_2d_triage_run,
+    research_triage_from_run,
+    resolve_ingest_path,
+    triage_suggested_line,
+    wmh_volume_is_trusted,
+)
+from src.llm.client import generate_clinical_prose, get_llm_client
+from src.llm.narrative_schema import (
+    RegionNarrative,
+    StructuredNarrativeError,
+    interpolate_narrative,
+    leaked_numeric_literals,
+    log_structured_number_leak,
+)
+from src.llm.validation import (
+    ValidationResult,
+    enforce_clinical_gate,
+    grounding_from_measurements,
+    log_grounding_assessment,
+    validate_no_invented_numbers,
+)
+from src.llm.versions import audit_llm_generation
+
+
+def _draft_provenance(finding_gates: list[ValidationResult]) -> dict[str, Any]:
+    from src.llm.content_provenance import build_content_provenance
+
+    combined = ValidationResult.combine(*finding_gates) if finding_gates else ValidationResult(passed=True)
+    return build_content_provenance(prompt_template_name="report_draft", gate=combined)
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _TPL_DIR = _PROJECT_ROOT / "configs" / "report_templates"
@@ -86,14 +117,35 @@ def _measures_dict(measurements: list[dict]) -> dict[str, float]:
     return d
 
 
-def _gemini_text(prompt: str, max_tokens: int = 200) -> str:
+def _llm_text(
+    prompt: str,
+    max_tokens: int = 200,
+    *,
+    grounding_payload: dict | None = None,
+    query: str | None = None,
+) -> tuple[str, dict]:
+    """Text-only generation. Never attach scan pixels (FDA Non-Device CDS Criterion 1)."""
+    if grounding_payload is not None:
+        try:
+            return generate_clinical_prose(
+                prompt,
+                query=query or "Draft the clinical findings section.",
+                grounding_payload=grounding_payload,
+                max_tokens=max_tokens,
+            )
+        except Exception:
+            return "", {}
     try:
-        client = get_llm_client(provider="gemini")
+        client = get_llm_client()
         gen_cfg = {"max_output_tokens": max_tokens}
         resp = client.generate_content(prompt, generation_config=gen_cfg)
-        return (getattr(resp, "text", None) or "").strip()
+        return (getattr(resp, "text", None) or "").strip(), {}
     except Exception:
-        return ""
+        return "", {}
+
+
+# Backwards-compatible alias (older call sites / tests)
+_gemini_text = _llm_text
 
 
 class ReportBuilder:
@@ -127,7 +179,7 @@ class ReportBuilder:
         mver = str(model_run.get("model_version") or "v1")
         conf = float(model_run.get("confidence") or model_run.get("model_confidence") or 0.0)
 
-        if isinstance(model_run.get("wmh"), dict):
+        if isinstance(model_run.get("wmh"), dict) and wmh_volume_is_trusted(model_run):
             wmh = model_run["wmh"]
             vol = float(wmh.get("volume_cc", 0))
             sev = self._volume_severity(vol)
@@ -153,6 +205,25 @@ class ReportBuilder:
                     "source": mname,
                 }
             )
+            for mid, label, key in (
+                ("wmh_volume_periventricular_cc", "WMH volume · periventricular", "volume_cc_periventricular"),
+                ("wmh_volume_deep_subcortical_cc", "WMH volume · deep/subcortical", "volume_cc_deep_subcortical"),
+                ("wmh_volume_infratentorial_cc", "WMH volume · infratentorial", "volume_cc_infratentorial"),
+            ):
+                raw = wmh.get(key)
+                if raw is None and isinstance(wmh.get("regional"), dict):
+                    raw = wmh["regional"].get(key)
+                m.append(
+                    {
+                        "id": mid,
+                        "label": label,
+                        "value": round(float(raw if raw is not None else 0.0), 4),
+                        "unit": "cc",
+                        "severity": None,
+                        "audit_ref": aid,
+                        "source": f"{mname} regional",
+                    }
+                )
             pct = wmh.get("age_matched_percentile")
             if pct is not None:
                 m.append(
@@ -167,57 +238,103 @@ class ReportBuilder:
                     }
                 )
 
-        probs = model_run.get("probabilities") or model_run.get("class_probabilities") or {}
-        if isinstance(probs, dict) and probs:
-            top_label = max(probs, key=lambda k: float(probs[k]))
-            top_p = float(probs[top_label])
+        if not is_2d_triage_run(model_run):
+            probs = model_run.get("probabilities") or model_run.get("class_probabilities") or {}
+            if isinstance(probs, dict) and probs:
+                top_label = max(probs, key=lambda k: float(probs[k]))
+                top_p = float(probs[top_label])
+                m.append(
+                    {
+                        "id": "dominant_class_probability",
+                        "label": f"P({top_label})",
+                        "value": round(top_p, 4),
+                        "unit": None,
+                        "severity": "warn" if top_p < 0.75 else "normal",
+                        "audit_ref": aid,
+                        "source": mname,
+                    }
+                )
+                m.append(
+                    {
+                        "id": "predicted_label",
+                        "label": "Leading class",
+                        "value": str(model_run.get("label") or top_label),
+                        "unit": None,
+                        "severity": None,
+                        "audit_ref": aid,
+                        "source": mname,
+                    }
+                )
+
             m.append(
                 {
-                    "id": "dominant_class_probability",
-                    "label": f"P({top_label})",
-                    "value": round(top_p, 4),
-                    "unit": None,
-                    "severity": "warn" if top_p < 0.75 else "normal",
+                    "id": "model_confidence",
+                    "label": "Model confidence",
+                    "value": round(conf * 100.0, 1) if conf <= 1.0 else round(conf, 1),
+                    "unit": "%" if conf <= 1.0 else None,
+                    "severity": "normal" if conf > 0.85 else "warn",
                     "audit_ref": aid,
                     "source": mname,
                 }
             )
+            # For rule evaluation some templates use raw 0–1 confidence
             m.append(
                 {
-                    "id": "predicted_label",
-                    "label": "Leading class",
-                    "value": str(model_run.get("label") or top_label),
+                    "id": "model_confidence_raw",
+                    "label": "Model confidence (0–1)",
+                    "value": round(conf if conf <= 1.0 else conf / 100.0, 4),
                     "unit": None,
                     "severity": None,
                     "audit_ref": aid,
                     "source": mname,
                 }
             )
-
-        m.append(
-            {
-                "id": "model_confidence",
-                "label": "Model confidence",
-                "value": round(conf * 100.0, 1) if conf <= 1.0 else round(conf, 1),
-                "unit": "%" if conf <= 1.0 else None,
-                "severity": "normal" if conf > 0.85 else "warn",
-                "audit_ref": aid,
-                "source": mname,
-            }
-        )
-        # For rule evaluation some templates use raw 0–1 confidence
-        m.append(
-            {
-                "id": "model_confidence_raw",
-                "label": "Model confidence (0–1)",
-                "value": round(conf if conf <= 1.0 else conf / 100.0, 4),
-                "unit": None,
-                "severity": None,
-                "audit_ref": aid,
-                "source": mname,
-            }
-        )
         return m
+
+    def _longitudinal_measurements(self, longitudinal: dict[str, Any], audit_id: str) -> list[dict]:
+        out: list[dict] = []
+        if str(longitudinal.get("status") or "") != "comparable":
+            return out
+        delta = longitudinal.get("volume_delta_cc")
+        if delta is not None:
+            out.append(
+                {
+                    "id": "wmh_volume_delta_cc",
+                    "label": "WMH volume change vs prior",
+                    "value": round(float(delta), 4),
+                    "unit": "cc",
+                    "severity": None,
+                    "audit_ref": audit_id,
+                    "source": "longitudinal",
+                }
+            )
+        pct = longitudinal.get("volume_pct_change")
+        if pct is not None:
+            out.append(
+                {
+                    "id": "wmh_volume_pct_change",
+                    "label": "WMH volume % change vs prior",
+                    "value": round(float(pct), 2),
+                    "unit": "%",
+                    "severity": None,
+                    "audit_ref": audit_id,
+                    "source": "longitudinal",
+                }
+            )
+        prior = longitudinal.get("prior_volume_cc")
+        if prior is not None:
+            out.append(
+                {
+                    "id": "wmh_volume_prior_cc",
+                    "label": "WMH volume · prior timepoint",
+                    "value": round(float(prior), 4),
+                    "unit": "cc",
+                    "severity": None,
+                    "audit_ref": audit_id,
+                    "source": "longitudinal",
+                }
+            )
+        return out
 
     def _volume_severity(self, vol_cc: float) -> str:
         if vol_cc < 1.0:
@@ -228,51 +345,75 @@ class ReportBuilder:
             return "moderate"
         return "severe"
 
-    def _format_measurements(self, measures: list[dict]) -> str:
+    def _format_measurement_slots(self, measures: list[dict]) -> str:
         lines = []
         for x in measures:
-            lines.append(f"- {x['id']}: {x['value']} {x.get('unit') or ''}".strip())
+            unit = x.get("unit") or ""
+            lines.append(f"- {{{x['id']}}}  ({x.get('label') or x['id']}{(' ' + unit) if unit else ''})")
         return "\n".join(lines) if lines else "(none)"
+
+    def _llm_region_narrative(
+        self,
+        prompt: str,
+        payload: dict,
+        region: dict[str, Any],
+        relevant: list[dict],
+    ) -> tuple[str, dict]:
+        """Prefer Bedrock structured (text-only) output; fall back to free-text generation."""
+        query = f"Draft the {region.get('label') or 'findings'} section using measurement slots only."
+        try:
+            from src.llm.bedrock import BedrockClient
+
+            client = get_llm_client()
+            if isinstance(client, BedrockClient):
+                try:
+                    nar = client.generate_structured_narrative(
+                        payload,
+                        RegionNarrative,
+                        prompt=prompt,
+                        query=query,
+                        generation_config={"max_output_tokens": 160},
+                        tool_name="region_narrative",
+                    )
+                    meta = getattr(client, "last_grounding_meta", {}) or {}
+                    return (getattr(nar, "text", None) or "").strip(), meta
+                except StructuredNarrativeError:
+                    # Schema-layer failure: do not retry as free text (that would
+                    # re-enable number invention). Caller uses the template fallback.
+                    return "", {}
+        except Exception:
+            pass
+        try:
+            return _llm_text(
+                prompt,
+                max_tokens=160,
+                grounding_payload=payload,
+                query=query,
+            )
+        except Exception:
+            return "", {}
 
     def _validate_no_invented_numbers(
         self,
         text: str,
         allowed_measurements: list[dict],
     ) -> str | None:
+        """Backward-compatible wrapper around the shared number gate."""
         if not text:
             return text
-        nums_in_text = re.findall(r"\b\d+\.?\d*\b", text)
-        allowed = _numeric_tokens(allowed_measurements)
-        for n in nums_in_text:
-            if n in allowed:
-                continue
-            try:
-                fn = float(n)
-            except ValueError:
-                continue
-            ok = False
-            for a in allowed:
-                try:
-                    if abs(float(a) - fn) < 1e-6:
-                        ok = True
-                        break
-                except ValueError:
-                    continue
-            if not ok:
-                log_report_draft_event(
-                    event_type="llm_hallucination_blocked",
-                    user_id="system",
-                    payload={"invented_number": n, "text": text[:500]},
-                )
-                return None
-        return text
+        result = validate_no_invented_numbers(text, {"measurements": allowed_measurements})
+        if result.passed:
+            return text
+        for n in result.invented_numbers:
+            log_report_draft_event(
+                event_type="llm_hallucination_blocked",
+                user_id="system",
+                payload={"invented_number": n, "text": text[:500]},
+            )
+        return None
 
     def _render_template_string(self, template: str, measurements: list[dict]) -> str:
-        md = {m["id"]: m["value"] for m in measurements}
-        out = template
-        for k, v in md.items():
-            out = out.replace(f"{{{{{k}}}}}", str(v))
-        return out
+        return interpolate_narrative(template, measurements)
 
     def _build_template_section(
         self,
@@ -296,7 +437,13 @@ class ReportBuilder:
                 else None
             ) or "3T"
             text = text.replace("{{scanner_field_strength}}", str(sf))
-        if name == "comparison" and extra_hint:
+        if name == "comparison" and isinstance(case.get("longitudinal"), dict):
+            lon = case["longitudinal"]
+            if str(lon.get("status") or "") == "comparable" and lon.get("comparison_summary"):
+                text = str(lon["comparison_summary"])
+            else:
+                text = "Prior not comparable."
+        elif name == "comparison" and extra_hint:
             text = f"{default_text}\n\nPrior studies noted: {extra_hint}."
         return {
             "name": name,
@@ -318,6 +465,34 @@ class ReportBuilder:
         severity_bucket: dict[str, Any],
     ) -> dict[str, Any]:
         _ = severity_bucket
+        triage = research_triage_from_run(model_run)
+        mids = set(region.get("measurement_ids") or [])
+        _TRIAGE_MIDS = {
+            "predicted_label",
+            "dominant_class_probability",
+            "model_confidence",
+            "model_confidence_raw",
+        }
+        if triage and (region.get("id") == "mass_region" or mids & _TRIAGE_MIDS):
+            cls = str(triage.get("class") or "unknown")
+            return {
+                "region": region["label"],
+                "text": triage_suggested_line(cls),
+                "measurements": [],
+                "citations": [],
+                "validation": ValidationResult(passed=True, used_fallback=True).to_dict(),
+            }
+        wants_wmh = any(
+            str(mid).startswith("wmh") or str(mid) in {"lesion_voxels", "age_percentile"} for mid in mids
+        )
+        if wants_wmh and not wmh_volume_is_trusted(model_run):
+            return {
+                "region": region["label"],
+                "text": LIMITED_EXAM_SENTENCE,
+                "measurements": [],
+                "citations": [],
+                "validation": ValidationResult(passed=True, used_fallback=True).to_dict(),
+            }
         if not region.get("ai_prompt"):
             return {
                 "region": region["label"],
@@ -331,20 +506,80 @@ class ReportBuilder:
 
         prompt = f"""You are drafting one section of a radiology report.
 Region: {region['label']}
-Available measurements (USE THESE EXACT VALUES, do not invent others):
-{self._format_measurements(relevant)}
+Available measurement SLOTS (insert these placeholders — never write the numbers yourself):
+{self._format_measurement_slots(relevant)}
 
 Model findings for this region:
 {region_hint}
 
-Write 1-2 sentences. Reference measurements using {{{{measure:ID}}}} placeholders only (e.g. {{{{measure:wmh_volume_cc}}}}).
-Do not write numeric literals except inside those placeholders."""
+Write 1-2 sentences of prose. Quantities MUST appear only as {{slot_id}} placeholders
+(e.g. {{wmh_volume_cc}} or {{{{measure:wmh_volume_cc}}}}). Do not write numeric literals.
+Do not name anatomical regions, findings, or severity grades that are not in the measurements above."""
 
-        raw = _gemini_text(prompt, max_tokens=160)
-        validated = self._validate_no_invented_numbers(raw, relevant) if raw else None
-        text = validated if validated else region.get("fallback", f"{region['label']}: see findings.")
-        mids = [m["id"] for m in relevant]
-        return {"region": region["label"], "text": text, "measurements": mids, "citations": []}
+        fallback = region.get("fallback", f"{region['label']}: see findings.")
+        payload = grounding_from_measurements(
+            relevant,
+            model_run=None,
+            regions=[region.get("label"), region.get("id")],
+        )
+        mids = set(region.get("measurement_ids") or [])
+        if mids & {"predicted_label", "dominant_class_probability", "model_confidence", "model_confidence_raw"}:
+            if not is_2d_triage_run(model_run):
+                payload["label"] = model_run.get("label") or model_run.get("prediction")
+                payload["confidence"] = model_run.get("confidence")
+                payload["probabilities"] = model_run.get("probabilities") or model_run.get("class_probabilities")
+        if any(str(mid).startswith("wmh") or str(mid) in {"lesion_voxels", "age_percentile"} for mid in mids):
+            if wmh_volume_is_trusted(model_run):
+                payload["wmh"] = model_run["wmh"]
+
+        raw, gmeta = self._llm_region_narrative(prompt, payload, region, relevant)
+        if not (raw or "").strip():
+            text, gate = fallback, ValidationResult(passed=True, used_fallback=True)
+        else:
+            leaked = leaked_numeric_literals(raw)
+            if leaked:
+                log_structured_number_leak({"region": leaked}, raw)
+                text, gate = fallback, ValidationResult(passed=True, used_fallback=True)
+            else:
+                interpolated = interpolate_narrative(raw, relevant)
+
+                def _retry(corrective: str) -> str:
+                    retry_text, _retry_meta = self._llm_region_narrative(
+                        prompt + "\n\n" + corrective,
+                        payload,
+                        region,
+                        relevant,
+                    )
+                    if _retry_meta:
+                        gmeta.update(_retry_meta)
+                    if leaked_numeric_literals(retry_text):
+                        log_structured_number_leak({"region_retry": leaked_numeric_literals(retry_text)}, retry_text)
+                        return ""
+                    return interpolate_narrative(retry_text, relevant)
+
+                text, gate = enforce_clinical_gate(
+                    interpolated,
+                    payload,
+                    fallback_text=fallback,
+                    retry_fn=_retry,
+                )
+        if gmeta:
+            gate.contextual_grounding = gmeta
+            log_grounding_assessment(gmeta, gate)
+        audit_llm_generation(
+            prompt_template_name="report_draft",
+            output_text=text,
+            grounding_payload=payload,
+            gate=gate,
+        )
+        mids_out = [m["id"] for m in relevant]
+        return {
+            "region": region["label"],
+            "text": text,
+            "measurements": mids_out,
+            "citations": [],
+            "validation": gate.to_dict(),
+        }
 
     def _build_impressions(
         self,
@@ -352,8 +587,36 @@ Do not write numeric literals except inside those placeholders."""
         measurements: list[dict],
         model_run: dict,
         citation_ids: dict[str, int],
+        case: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         impressions: list[dict[str, Any]] = []
+        triage = research_triage_from_run(model_run)
+        if triage and "wmh_volume_cc" not in _measures_dict(measurements):
+            cls = str(triage.get("class") or "unknown")
+            return [
+                {
+                    "order": 1,
+                    "text": triage_suggested_line(cls),
+                    "measurements": [],
+                    "citations": [],
+                }
+            ]
+        if not wmh_volume_is_trusted(model_run) and "wmh_volume_cc" not in _measures_dict(measurements):
+            qc = model_run.get("qc") if isinstance(model_run.get("qc"), dict) else {}
+            if isinstance(case, dict) and isinstance(case.get("qc"), dict):
+                qc = case["qc"]
+            overall = str(qc.get("overall") or "")
+            wmh = model_run.get("wmh") if isinstance(model_run.get("wmh"), dict) else {}
+            omitted = str(wmh.get("status") or "").lower() in {"omitted", "unreliable"} or overall == "fail"
+            if omitted or (qc.get("engines") or {}).get("wmh_3d", {}).get("run") is False:
+                return [
+                    {
+                        "order": 1,
+                        "text": LIMITED_EXAM_SENTENCE,
+                        "measurements": [],
+                        "citations": [],
+                    }
+                ]
         tpl = severity_bucket.get("template") or ""
         meas_ext = list(measurements)
         for fk, fv in severity_bucket.items():
@@ -393,12 +656,48 @@ Do not write numeric literals except inside those placeholders."""
                 "citations": imp_cites,
             }
         )
+        lon = (case or {}).get("longitudinal") if isinstance(case, dict) else None
+        if isinstance(lon, dict) and lon.get("status") == "comparable" and lon.get("volume_delta_cc") is not None:
+            delta = float(lon["volume_delta_cc"])
+            pct = lon.get("volume_pct_change")
+            direction = str(lon.get("direction") or "stable")
+            if direction == "stable":
+                lon_text = (
+                    "Longitudinal comparison: WMH burden is **stable** vs prior "
+                    f"({{measure:wmh_volume_prior_cc}} cc → {{measure:wmh_volume_cc}} cc, "
+                    "Δ {{measure:wmh_volume_delta_cc}} cc)."
+                )
+            elif pct is not None:
+                lon_text = (
+                    f"Longitudinal comparison: WMH burden **{direction}** vs prior "
+                    f"({{measure:wmh_volume_prior_cc}} cc → {{measure:wmh_volume_cc}} cc, "
+                    "Δ {{measure:wmh_volume_delta_cc}} cc, {{measure:wmh_volume_pct_change}}% change)."
+                )
+            else:
+                lon_text = (
+                    f"Longitudinal comparison: WMH burden **{direction}** vs prior "
+                    f"({{measure:wmh_volume_prior_cc}} cc → {{measure:wmh_volume_cc}} cc, "
+                    "Δ {{measure:wmh_volume_delta_cc}} cc)."
+                )
+            impressions.append(
+                {
+                    "order": 2,
+                    "text": lon_text,
+                    "measurements": [
+                        "wmh_volume_prior_cc",
+                        "wmh_volume_cc",
+                        "wmh_volume_delta_cc",
+                        "wmh_volume_pct_change",
+                    ],
+                    "citations": [],
+                }
+            )
         if "wmh_volume_cc" in _measures_dict(measurements) and isinstance(model_run.get("wmh"), dict):
             wmh = model_run["wmh"]
             if wmh.get("age_matched_percentile") is not None:
                 impressions.append(
                     {
-                        "order": 2,
+                        "order": len(impressions) + 1,
                         "text": (
                             "WMH burden is at the {{measure:age_percentile}} for "
                             "age-matched ADNI cognitively normal cohort, "
@@ -416,6 +715,8 @@ Do not write numeric literals except inside those placeholders."""
                 "citations": [],
             }
         )
+        for im in impressions:
+            im["text"] = interpolate_narrative(im.get("text") or "", meas_ext)
         return impressions
 
     def _build_recommendations(self, severity: str, rules: list[dict[str, Any]]) -> list[str]:
@@ -456,6 +757,9 @@ Do not write numeric literals except inside those placeholders."""
 
     def build_draft(self, case: dict[str, Any], model_run: dict) -> dict[str, Any]:
         measurements = self._extract_measurements(model_run)
+        aid = str(model_run.get("audit_id") or model_run.get("model_run_id") or "unknown")
+        if isinstance(case.get("longitudinal"), dict):
+            measurements.extend(self._longitudinal_measurements(case["longitudinal"], aid))
         rules = list(self.template.get("impression_rules") or [])
         severity_bucket = self._evaluate_impression_rules(rules, measurements)
         severity = str(severity_bucket.get("severity") or "normal")
@@ -479,8 +783,27 @@ Do not write numeric literals except inside those placeholders."""
         )
 
         findings = []
+        finding_gates: list[ValidationResult] = []
         for region in self.template.get("finding_regions") or []:
-            findings.append(self._build_finding_row(region, measurements, model_run, severity_bucket))
+            row = self._build_finding_row(region, measurements, model_run, severity_bucket)
+            findings.append(row)
+            v = row.get("validation")
+            if isinstance(v, dict):
+                finding_gates.append(
+                    ValidationResult(
+                        passed=bool(v.get("passed")),
+                        invented_numbers=list(v.get("invented_numbers") or []),
+                        invented_entities=list(v.get("invented_entities") or []),
+                        omitted_findings=list(v.get("omitted_findings") or []),
+                        contradicted_claims=list(v.get("contradicted_claims") or []),
+                        unaddressed_claims=list(v.get("unaddressed_claims") or []),
+                        used_fallback=bool(v.get("used_fallback")),
+                        regenerated=bool(v.get("regenerated")),
+                        chain_of_verification=v.get("chain_of_verification")
+                        if isinstance(v.get("chain_of_verification"), dict)
+                        else None,
+                    )
+                )
 
         findings_section = {
             "name": "findings",
@@ -496,13 +819,9 @@ Do not write numeric literals except inside those placeholders."""
         sections.append(findings_section)
 
         citations, cite_map = self._extract_citations()
-        impressions = self._build_impressions(severity_bucket, measurements, model_run, cite_map)
+        impressions = self._build_impressions(severity_bucket, measurements, model_run, cite_map, case=case)
         for im in impressions:
-            txt = im["text"]
-            for mid in im.get("measurements") or []:
-                mv = next((m["value"] for m in measurements if m["id"] == mid), "")
-                txt = txt.replace(f"{{{{measure:{mid}}}}}", str(mv))
-            im["text"] = txt
+            im["text"] = interpolate_narrative(im.get("text") or "", measurements)
 
         impression_section = {
             "name": "impression",
@@ -553,7 +872,8 @@ Do not write numeric literals except inside those placeholders."""
         study_uid = str(case.get("study_uid") or case.get("case_id") or "")
         now = _utc_iso()
         conf_raw = float(model_run.get("confidence") or 0.0)
-        return {
+        triage = research_triage_from_run(model_run)
+        out: dict[str, Any] = {
             "report_id": report_id,
             "case_id": study_uid,
             "study_uid": study_uid,
@@ -576,13 +896,30 @@ Do not write numeric literals except inside those placeholders."""
             "signed_text_hash": None,
             "signature_audit_id": None,
             "disclaimer": DEFAULT_DISCLAIMER,
+            "provenance": _draft_provenance(finding_gates),
+            "attested_by": None,
+            "attested_at": None,
+            "attestation_text": None,
+            "attestation_audit_id": None,
+            "validation": (
+                ValidationResult.combine(*finding_gates).to_dict()
+                if finding_gates
+                else ValidationResult(passed=True).to_dict()
+            ),
             "case_snapshot": {
                 "clinical_context": case.get("clinical_context"),
                 "prior_studies": case.get("prior_studies"),
                 "scanner_field_strength": case.get("scanner_field_strength") or "3T",
+                "longitudinal": case.get("longitudinal"),
+                "qc": case.get("qc") or model_run.get("qc"),
             },
             "model_run_snapshot": dict(model_run),
         }
+        if triage:
+            out["research"] = {"triage": triage}
+        out["ingest_path"] = resolve_ingest_path(model_run)
+        out["export_allowed"] = export_allowed_for(out)
+        return out
 
     def regenerate_section(
         self,
@@ -620,11 +957,7 @@ Do not write numeric literals except inside those placeholders."""
             _, key_map = self._extract_citations()
             impressions = self._build_impressions(severity_bucket, measurements, model_run, key_map)
             for im in impressions:
-                txt = im["text"]
-                for mid in im.get("measurements") or []:
-                    mv = next((m["value"] for m in measurements if m["id"] == mid), "")
-                    txt = txt.replace(f"{{{{measure:{mid}}}}}", str(mv))
-                im["text"] = txt
+                im["text"] = interpolate_narrative(im.get("text") or "", measurements)
             return {
                 "name": "impression",
                 "source": "ai",

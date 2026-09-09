@@ -1,7 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { formatApiConnectionHint, generateReport, ReportResponse } from "../api/client";
+import { formatApiConnectionHint, generateReport, attestGeneratedContent, ReportResponse } from "../api/client";
 import EvidenceDrawer, { EvidenceCitation } from "../components/EvidenceDrawer";
+import { AppPage } from "../components/layout/AppPage";
+import { AttestationGate } from "../components/ui/AttestationGate";
+import { IosButton, IosLinkButton } from "../components/ui/IosButton";
+import { ProviderBadge } from "../components/ui/ProviderBadge";
+import { useFeatures } from "../hooks/useFeatures";
+import { TRIAGE_BANNER } from "../lib/triageCopy";
 
 type StoredPrediction = {
   scanBase64: string;
@@ -40,6 +45,10 @@ export default function GenerateReport() {
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [savedTimestamp, setSavedTimestamp] = useState<string>("");
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
+  const [attested, setAttested] = useState(false);
+  const [attestBusy, setAttestBusy] = useState(false);
+  const [attestErr, setAttestErr] = useState<string | null>(null);
+  const { llmProvider } = useFeatures();
 
   useEffect(() => {
     const raw = sessionStorage.getItem("lastPrediction");
@@ -67,10 +76,16 @@ export default function GenerateReport() {
         shadow_mode: stored.shadow_mode,
       });
       setReport(r);
+      setAttested(false);
       const ts = new Date().toISOString();
       sessionStorage.setItem(
         "lastReport",
-        JSON.stringify({ study_instance_uid: stored.study_instance_uid, report_text: r.report_text, timestamp: ts })
+        JSON.stringify({
+          study_instance_uid: stored.study_instance_uid,
+          report_text: r.report_text,
+          timestamp: ts,
+          provenance: r.provenance ?? null,
+        }),
       );
       setSavedTimestamp(ts);
     } catch (e) {
@@ -90,90 +105,97 @@ export default function GenerateReport() {
         "Standardized template for brain MRI reports including sections for indication, technique, findings, and impression. The AI draft should follow this structure.",
       score: 0.9,
     },
-    {
-      id: "rag-guideline-1",
-      title: "Glioma imaging guideline",
-      source: "guidelines / glioma-imaging",
-      snippet:
-        "In suspected glioma, MRI with and without contrast is recommended to evaluate tumor extent, edema, and mass effect. Reporting should describe size, location, and involvement of eloquent cortex.",
-      score: 0.87,
-    },
   ];
 
   return (
-    <div className="container">
-      <h2 style={{ marginTop: 16 }}>Report draft</h2>
-
+    <AppPage title="Report draft">
       {!stored ? (
-        <div style={{ marginTop: 14, color: "var(--muted)" }}>
-          No prediction found in this session. Go to <a href="/upload">Upload & Predict</a>.
+        <div className="app-text-muted">
+          No prediction found in this session. Go to <a href="/upload">Upload &amp; Predict</a>.
         </div>
       ) : (
-        <div className="grid2" style={{ marginTop: 14 }}>
+        <div className="app-grid-2">
           <div className="card">
-            <div style={{ fontWeight: 800 }}>Structured context</div>
-            <div style={{ marginTop: 10, color: "var(--muted)" }}>
+            <div className="app-card-title">Structured context</div>
+            <div className="app-text-muted" style={{ marginTop: 10, fontSize: 13 }}>
+              <div style={{ marginBottom: 8 }}>{TRIAGE_BANNER}</div>
               <div><b>Study UID:</b> {stored.study_instance_uid}</div>
               <div><b>Site ID:</b> {stored.site_id || "—"}</div>
               <div><b>Model:</b> {stored.model}</div>
+              <div>
+                <b>Suggested class (research):</b> {stored.prediction.label}{" "}
+                ({(stored.prediction.confidence * 100).toFixed(1)}%)
+              </div>
             </div>
-            <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Link to={`/reading/${encodeURIComponent(stored.study_instance_uid)}`} className="btn btnOutline">
+            <div style={{ marginTop: 12 }}>
+              <IosLinkButton to={`/reading/${encodeURIComponent(stored.study_instance_uid)}`} variant="ghost">
                 Open reading mode
-              </Link>
+              </IosLinkButton>
             </div>
             <div style={{ marginTop: 18 }}>
-              <button className="btnPrimary" disabled={loading} onClick={onGenerate} style={{ width: "100%", padding: "12px 18px" }}>
+              <IosButton variant="primary" fullWidth loading={loading} disabled={loading} onClick={() => void onGenerate()}>
                 {loading ? "Generating..." : "Generate report (LLM)"}
-              </button>
+              </IosButton>
             </div>
-            {error ? (
-              <div style={{ marginTop: 12, color: "crimson", fontWeight: 600, whiteSpace: "pre-wrap" }}>{error}</div>
-            ) : null}
+            {error ? <div className="app-text-error" style={{ marginTop: 12, fontWeight: 600, whiteSpace: "pre-wrap" }}>{error}</div> : null}
             {savedTimestamp ? (
-              <div style={{ marginTop: 10, color: "var(--muted)", fontSize: 12 }}>
+              <div className="app-text-muted" style={{ marginTop: 10, fontSize: 12 }}>
                 Saved to reading mode: {new Date(savedTimestamp).toLocaleString()}
               </div>
             ) : null}
           </div>
 
           <div className="card">
-            <div style={{ fontWeight: 800 }}>LLM report (review &amp; sign)</div>
-            <div style={{ marginTop: 10, color: "var(--muted)" }}>
+            <div className="app-card-title">LLM report (review &amp; sign)</div>
+            <div className="app-text-muted" style={{ marginTop: 10, fontSize: 13 }}>
               {report
                 ? "Review the grounded report text below. In a clinical deployment this would be signed off inside the RIS/PACS."
                 : "Click generate to draft a grounded report via the backend."}
             </div>
             <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button className="btn" type="button" onClick={() => setDrawerOpen(true)}>
+              <IosButton variant="secondary" size="sm" onClick={() => setDrawerOpen(true)}>
                 View evidence
-              </button>
-              <Link to={`/reading/${encodeURIComponent(stored.study_instance_uid)}`} className="btn btnOutline">
+              </IosButton>
+              <IosLinkButton to={`/reading/${encodeURIComponent(stored.study_instance_uid)}`} variant="ghost" size="sm">
                 Open reading mode
-              </Link>
+              </IosLinkButton>
             </div>
             {report ? (
-              <pre
-                style={{
-                  whiteSpace: "pre-wrap",
-                  lineHeight: 1.5,
-                  background: "rgba(79,70,229,0.05)",
-                  border: "1px solid rgba(79,70,229,0.12)",
-                  padding: 14,
-                  borderRadius: 12,
-                  marginTop: 12,
-                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                }}
-              >
-                {report.report_text}
-              </pre>
+              <>
+                <pre className="app-report-pre">{report.report_text}</pre>
+                <div style={{ marginTop: 8 }}>
+                  <ProviderBadge provider={llmProvider} provenance={report.provenance} />
+                </div>
+                <div style={{ marginTop: 14 }}>
+                  <AttestationGate
+                    attested={attested}
+                    busy={attestBusy}
+                    error={attestErr}
+                    onSubmit={async (name, text) => {
+                      setAttestBusy(true);
+                      setAttestErr(null);
+                      try {
+                        await attestGeneratedContent({
+                          attested_by: name,
+                          attestation_text: text,
+                          content_kind: "report",
+                        });
+                        setAttested(true);
+                      } catch (e) {
+                        setAttestErr(e instanceof Error ? e.message : "Attestation failed");
+                      } finally {
+                        setAttestBusy(false);
+                      }
+                    }}
+                  />
+                </div>
+              </>
             ) : null}
           </div>
         </div>
       )}
 
       <EvidenceDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} title="Report evidence" citations={reportCitations} />
-    </div>
+    </AppPage>
   );
 }
-

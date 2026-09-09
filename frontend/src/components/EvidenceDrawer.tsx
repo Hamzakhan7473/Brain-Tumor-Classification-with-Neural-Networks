@@ -1,4 +1,5 @@
 import React from "react";
+import { IosButton } from "./ui/IosButton";
 
 export type EvidenceCitation = {
   id: string;
@@ -51,9 +52,9 @@ export default function EvidenceDrawer(props: {
               {props.title || "Retrieved citations"}
             </div>
           </div>
-          <button className="btn" type="button" onClick={props.onClose}>
+          <IosButton variant="secondary" size="sm" onClick={props.onClose}>
             Close
-          </button>
+          </IosButton>
         </div>
 
         <p style={{ marginTop: 10, color: "var(--ink-mute)", fontSize: 13 }}>

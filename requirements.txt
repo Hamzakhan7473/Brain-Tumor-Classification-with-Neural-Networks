@@ -15,6 +15,7 @@ Pillow>=9.5.0
 opencv-python-headless>=4.7.0
 scikit-learn>=1.2.0
 nibabel>=5.0.0   # 3D NIfTI volumes (BraTS, etc.)
+SimpleITK>=2.3.0  # rigid/affine FLAIR-to-FLAIR registration (not ANTs)
 
 # Configuration
 pyyaml>=6.0
@@ -22,7 +23,8 @@ pyyaml>=6.0
 # Streamlit & UI
 streamlit>=1.28.0
 
-# Multimodal LLM (Gemini, etc.)
+# Multimodal LLM — Amazon Bedrock (HIPAA-eligible, primary) + Gemini (fallback)
+boto3>=1.34.0
 google-generativeai>=0.3.0
 openai>=1.0.0
 
